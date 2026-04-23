@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Plan Comida · PWA local-first</title>
+  <meta name="description" content="PWA local-first para planificar comidas altas en proteína, con recetas accesibles en supermercados españoles, seguimiento de progreso y soporte offline.">
+  <meta name="theme-color" content="#0f172a">
+
+  <meta property="og:title" content="Plan Comida · PWA local-first">
+  <meta property="og:type" content="website">
+  <meta property="og:description" content="Planificador de comidas alta en proteína para ectomorfos con soporte offline y datos locales.">
+  <meta property="og:image" content="icon.png">
+  <meta property="og:image:alt" content="Logotipo de Plan Comida">
+
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+  <a class="skip-link" href="#app">Saltar al contenido principal</a>
+  <noscript>
+    <div class="noscript-banner">
+      Esta aplicación necesita JavaScript para funcionar.
+    </div>
+  </noscript>
+
+  <div id="app" aria-live="polite">
+    <main class="app-shell app-shell--fallback">
+      <section class="glass-panel fallback-card">
+        <p class="eyebrow">Plan Comida</p>
+        <h1>Tu app local-first de planificación nutricional está cargando…</h1>
+        <p>Si la interfaz tarda unos segundos, espera a que se inicialice IndexedDB y el servicio offline.</p>
+      </section>
+    </main>
+  </div>
+
+  <script src="js/app.js"></script>
+
+</body>
+
+</html>
