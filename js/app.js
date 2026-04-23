@@ -53,6 +53,28 @@
   };
   const defaultGoals = { calories: 2850, protein: 170, carbs: 355, fats: 90 };
 
+  const defaultState = {
+    version: 1,
+    tab: DEFAULT_TAB,
+    activeDate: todayKey(),
+    recipeQuery: '',
+    recipeCategory: 'all',
+    shoppingDays: 3,
+    onboardingStep: 0,
+    onboardingDraft: clone(defaultProfile),
+    recipeDraftOpen: false,
+    recipeDraft: createEmptyRecipeDraft(),
+    selectedRecipeId: null,
+    status: { text: '', type: 'info' },
+    profile: clone(defaultProfile),
+    goals: clone(defaultGoals),
+    customRecipes: [],
+    plans: {},
+    history: seedHistory(),
+    weightLog: [],
+    lastSync: null,
+  };
+
   const baseRecipes = [
     {
       id: 'breakfast-claras-avena',
@@ -392,8 +414,9 @@
     seedHistoryIfNeeded();
     bindGlobalEvents();
     registerServiceWorker();
-    render();
     announce('Aplicación lista. Tu plan se guarda localmente.');
+    render();
+    queueSave();
   }
 
   function clone(value) {
@@ -403,7 +426,7 @@
   function hydrateState(stored) {
     const incoming = stored && typeof stored === 'object' ? stored : {};
     const merged = clone(defaultState);
-    merged.tab = incoming.tab || merged.tab;
+    merged.tab = incoming.tab || DEFAULT_TAB;
     merged.activeDate = incoming.activeDate || merged.activeDate;
     merged.recipeQuery = incoming.recipeQuery || '';
     merged.recipeCategory = incoming.recipeCategory || 'all';
@@ -428,6 +451,7 @@
     appRoot.addEventListener('click', onClick);
     appRoot.addEventListener('submit', onSubmit);
     appRoot.addEventListener('input', onInput);
+    appRoot.addEventListener('change', onChange);
     window.addEventListener('online', () => {
       state.status = { text: 'Conexión restablecida. Los datos siguen sincronizados localmente.', type: 'success' };
       render();
@@ -580,6 +604,31 @@
 
     if (target.name && target.form && target.form.id === 'recipe-creator-form') {
       updateRecipeDraft(target);
+    }
+  }
+
+  function onChange(event) {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+
+    if (target.id === 'import-file' && target.files && target.files[0]) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const imported = JSON.parse(String(reader.result || '{}'));
+          state = hydrateState(imported);
+          syncGoalsFromProfile();
+          ensureTodayPlan(true);
+          seedHistoryIfNeeded(true);
+          state.status = { text: 'Datos importados correctamente desde el archivo local.', type: 'success' };
+          queueSave();
+          render();
+        } catch (error) {
+          state.status = { text: 'El archivo importado no es válido.', type: 'error' };
+          render();
+        }
+      };
+      reader.readAsText(target.files[0]);
     }
   }
 
@@ -931,11 +980,13 @@
   }
 
   function seedHistoryIfNeeded(force = false) {
-    if (state.history.length && !force) return;
+    const hasMeaningfulData = state.history.some((entry) => Number(entry.calories) > 0 || Number(entry.protein) > 0 || Number(entry.weight) > 0);
+    if (state.history.length && hasMeaningfulData && !force) return;
+    const goals = state.goals || defaultGoals;
     state.history = Array.from({ length: 14 }, (_, index) => {
       const day = addDays(todayKey(), index - 13);
-      const calories = Math.round(defaultGoals.calories * (0.9 + ((index % 5) * 0.03)));
-      const protein = Math.round(defaultGoals.protein * (0.88 + ((index % 4) * 0.04)));
+      const calories = Math.round(goals.calories * (0.9 + ((index % 5) * 0.03)));
+      const protein = Math.round(goals.protein * (0.88 + ((index % 4) * 0.04)));
       const weight = Number((state.profile.weight - 0.7 + index * 0.08).toFixed(1));
       return { date: day, calories, protein, weight };
     });
@@ -1003,7 +1054,7 @@
 
   function renderTabContent(plan, totals, completion) {
     if (!state.profile.completed) {
-      return `<section class="hero hero--onboarding glass-panel"><div><p class="eyebrow">Bienvenida</p><h2>Vamos a configurar tu perfil para crear un plan potente y realista.</h2><p>Solo tardarás unos minutos. Después verás 3 comidas principales por día, recetas adaptadas y una lista de compra automática.</p></div><div class="hero-card hero-card--accent"><p class="hero-card__label">Paso actual</p><strong>Onboarding inicial</strong><p>Guardado local, sin cuentas ni nube.</p></div></section>${renderOnboardingModal()}`;
+      return `<section class="hero hero--onboarding glass-panel"><div><p class="eyebrow">Bienvenida</p><h2>Vamos a configurar tu perfil para crear un plan potente y realista.</h2><p>Solo tardarás unos minutos. Después verás 3 comidas principales por día, recetas adaptadas y una lista de compra automática.</p></div><div class="hero-card hero-card--accent"><p class="hero-card__label">Paso actual</p><strong>Onboarding inicial</strong><p>Guardado local, sin cuentas ni nube.</p></div></section>`;
     }
     switch (state.tab) {
       case 'plan': return renderDashboard(plan, totals, completion);
@@ -1209,6 +1260,92 @@
     `;
   }
 
+  function renderOnboardingModal() {
+    if (state.profile.completed) return '';
+    const draft = state.onboardingDraft;
+    const step = Math.min(state.onboardingStep, 2);
+
+    const steps = [
+      `
+        <label class="input-group">
+          <span>Nombre</span>
+          <input name="name" type="text" value="${escapeAttr(draft.name || '')}" placeholder="Tu nombre">
+        </label>
+        <label class="input-group">
+          <span>Peso (kg)</span>
+          <input name="weight" type="number" step="0.1" min="30" value="${escapeAttr(draft.weight)}">
+        </label>
+        <label class="input-group">
+          <span>Altura (cm)</span>
+          <input name="height" type="number" step="1" min="120" value="${escapeAttr(draft.height)}">
+        </label>
+      `,
+      `
+        <label class="input-group">
+          <span>Edad</span>
+          <input name="age" type="number" min="16" max="100" value="${escapeAttr(draft.age)}">
+        </label>
+        <label class="input-group">
+          <span>Nivel de actividad</span>
+          <select name="activity">
+            ${Object.entries(activityLevels).map(([value, item]) => `<option value="${value}" ${draft.activity === value ? 'selected' : ''}>${item.label}</option>`).join('')}
+          </select>
+        </label>
+        <label class="input-group">
+          <span>Objetivo</span>
+          <select name="goalMode">
+            <option value="gain" ${draft.goalMode === 'gain' ? 'selected' : ''}>Ganar masa</option>
+            <option value="maintain" ${draft.goalMode === 'maintain' ? 'selected' : ''}>Mantener</option>
+            <option value="cut" ${draft.goalMode === 'cut' ? 'selected' : ''}>Definir</option>
+          </select>
+        </label>
+      `,
+      `
+        <label class="input-group">
+          <span>Estilo dietético</span>
+          <select name="dietaryStyle">
+            ${Object.entries(dietaryStyles).map(([value, label]) => `<option value="${value}" ${draft.dietaryStyle === value ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </label>
+        <fieldset class="field-group field-group--full">
+          <legend>Restricciones</legend>
+          <div class="check-grid">
+            ${restrictionsCatalog.map((item) => `<label class="check-item"><input type="checkbox" name="restrictions" value="${item.id}" ${draft.restrictions.includes(item.id) ? 'checked' : ''}><span>${item.label}</span></label>`).join('')}
+          </div>
+        </fieldset>
+        <label class="input-group field-group--full">
+          <span>Peso objetivo (kg)</span>
+          <input name="targetWeight" type="number" step="0.1" min="30" value="${escapeAttr(draft.targetWeight)}">
+        </label>
+      `,
+    ];
+
+    return `
+      <div class="modal-backdrop modal-backdrop--onboarding" role="presentation">
+        <section class="modal glass-panel modal--onboarding" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Onboarding</p>
+              <h2 id="onboarding-title">Configura tu perfil</h2>
+            </div>
+            <span class="step-pill">Paso ${step + 1} de 3</span>
+          </div>
+          <form id="onboarding-form" class="settings-grid settings-grid--single">
+            ${steps[step]}
+            <label class="input-group field-group--full">
+              <span>Comentario opcional</span>
+              <textarea name="notes" rows="3" placeholder="Ej. Entreno por la tarde, prefiero comida más densa...">${escapeHtml(draft.notes || '')}</textarea>
+            </label>
+            <div class="field-group field-group--full form-footer">
+              ${step > 0 ? '<button class="btn btn--ghost" type="button" data-action="previous-step">Atrás</button>' : '<span></span>'}
+              <button class="btn btn--primary" type="submit">${step === 2 ? 'Crear mi plan' : 'Siguiente'}</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    `;
+  }
+
   function renderRecipeDetailModal() {
     const recipe = getRecipeById(state.selectedRecipeId);
     if (!recipe) return '';
@@ -1283,7 +1420,8 @@
   }
 
   function registerServiceWorker() {
-    if (!('serviceWorker' in navigator)) return;
+    const isLocalDev = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    if (!('serviceWorker' in navigator) || isLocalDev) return;
     navigator.serviceWorker.register('/sw.js').catch((error) => {
       console.warn('No se pudo registrar el service worker.', error);
     });
@@ -1325,17 +1463,41 @@
     });
   }
 
+  async function loadState() {
+    try {
+      const fromDb = await readStateFromIndexedDB();
+      if (fromDb) return fromDb;
+    } catch (error) {
+      console.warn('No se pudo leer IndexedDB.', error);
+    }
+
+    try {
+      const fromStorage = localStorage.getItem(STORAGE_KEY);
+      if (fromStorage) return JSON.parse(fromStorage);
+    } catch (error) {
+      console.warn('No se pudo leer localStorage.', error);
+    }
+
+    return null;
+  }
+
   function queueSave() {
     clearTimeout(saveQueue);
     saveQueue = setTimeout(async () => {
       state.lastSync = new Date().toISOString();
       try {
-        await writeStateToIndexedDB(state);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        const snapshot = serializeState();
+        await writeStateToIndexedDB(snapshot);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
       } catch (error) {
         console.warn('Persistencia local fallida, se conserva la sesión en memoria.', error);
       }
     }, 60);
+  }
+
+  function serializeState() {
+    const { installPrompt, ...persisted } = state;
+    return clone(persisted);
   }
 
   function renderTextField(name, label, value) {
