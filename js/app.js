@@ -31,6 +31,10 @@
     shopping: 'Lista de la Compra',
     settings: 'Ajustes',
   };
+  const TRAINING_MODE_LABELS = {
+    gym: 'Gym',
+    calisthenia: 'Calistenia',
+  };
   const activityLevels = {
     sedentary: { label: 'Sedentario', multiplier: 1.2 },
     light: { label: 'Ligero', multiplier: 1.375 },
@@ -78,6 +82,7 @@
   const defaultState = {
     version: 1,
     tab: 'plan',
+    planViewMode: 'week',
     activeDate: todayKey(),
     weekFocusDate: todayKey(),
     weekScrollLeft: 0,
@@ -484,6 +489,7 @@
     const incoming = stored && typeof stored === 'object' ? stored : {};
     const merged = clone(defaultState);
     merged.tab = incoming.tab || 'plan';
+    merged.planViewMode = incoming.planViewMode || merged.planViewMode;
     merged.activeDate = incoming.activeDate || merged.activeDate;
     merged.weekFocusDate = incoming.weekFocusDate || merged.activeDate;
     merged.weekScrollLeft = Number(incoming.weekScrollLeft) || 0;
@@ -504,7 +510,20 @@
     merged.profile = incoming.profile ? { ...clone(defaultProfile), ...incoming.profile } : clone(defaultProfile);
     merged.goals = incoming.goals ? { ...clone(defaultGoals), ...incoming.goals } : clone(defaultGoals);
     merged.nutrition = incoming.nutrition ? { ...createNutritionState(), ...incoming.nutrition, meals: Array.isArray(incoming.nutrition.meals) ? incoming.nutrition.meals : createNutritionState().meals } : createNutritionState();
-    merged.training = incoming.training ? { ...createTrainingState(), ...incoming.training, days: Array.isArray(incoming.training.days) ? incoming.training.days : createTrainingState().days, logsByDate: incoming.training.logsByDate && typeof incoming.training.logsByDate === 'object' ? incoming.training.logsByDate : createTrainingState().logsByDate } : createTrainingState();
+    const defaultTraining = createTrainingState();
+    merged.training = incoming.training ? {
+      ...defaultTraining,
+      ...incoming.training,
+      programs: normalizeTrainingPrograms(incoming.training.programs, incoming.training.days || defaultTraining.days),
+      days: Array.isArray(incoming.training.days) ? incoming.training.days : defaultTraining.days,
+      logsByDate: incoming.training.logsByDate && typeof incoming.training.logsByDate === 'object' ? incoming.training.logsByDate : defaultTraining.logsByDate,
+      exerciseTargets: sanitizeTrainingTargets(incoming.training.exerciseTargets),
+      mode: normalizeTrainingMode(incoming.training.mode),
+    } : defaultTraining;
+    merged.training.days = clone(merged.training.programs?.[merged.training.mode] || merged.training.days || defaultTraining.days);
+    if (!merged.training.days.some((day) => day.id === merged.training.selectedDayId)) {
+      merged.training.selectedDayId = merged.training.days[0]?.id || 'day1';
+    }
     merged.customRecipes = Array.isArray(incoming.customRecipes) ? incoming.customRecipes : [];
     merged.plans = incoming.plans && typeof incoming.plans === 'object' ? incoming.plans : {};
     merged.history = Array.isArray(incoming.history) ? incoming.history : seedHistory();
@@ -563,6 +582,14 @@
       return;
     }
 
+    const viewModeTarget = event.target.closest('[data-view-mode]');
+    if (viewModeTarget) {
+      state.planViewMode = viewModeTarget.dataset.viewMode;
+      render();
+      queueSave();
+      return;
+    }
+
     if (!actionTarget) return;
 
     const action = actionTarget.dataset.action;
@@ -588,12 +615,24 @@
       if (action === 'select-week-day') {
         state.activeDate = actionTarget.dataset.date;
         state.weekFocusDate = actionTarget.dataset.date;
+        if (state.planViewMode === 'month') state.planViewMode = 'day';
         ensureTodayPlan();
         render();
         queueSave();
         return;
       }
       setWeekMealOption(actionTarget.dataset.date, actionTarget.dataset.slot, actionTarget.dataset.optionId);
+      return;
+    }
+
+    if (action === 'toggle-day-objective') {
+      const date = actionTarget.dataset.date || state.activeDate;
+      const plan = ensurePlanForDate(date);
+      plan.objectivesCompleted = !Boolean(plan.objectivesCompleted);
+      persistPlan(date, plan);
+      state.status = { text: plan.objectivesCompleted ? `Objetivos del ${formatDateLabel(date)} marcados como cumplidos.` : `Objetivos del ${formatDateLabel(date)} desmarcados.`, type: 'success' };
+      queueSave();
+      render();
       return;
     }
 
@@ -604,6 +643,16 @@
       primeExerciseMedia(getExerciseById(state.selectedExerciseVideoId));
       render();
       queueSave();
+      return;
+    }
+
+    if (action === 'save-training-target') {
+      saveTrainingTarget(actionTarget);
+      return;
+    }
+
+    if (action === 'apply-training-target') {
+      applyTrainingTarget(actionTarget);
       return;
     }
 
@@ -722,6 +771,24 @@
       case 'toggle-nutrition-meal':
         toggleNutritionMeal(actionTarget.dataset.mealId);
         break;
+      case 'set-training-mode': {
+        const mode = normalizeTrainingMode(actionTarget.dataset.mode);
+        if (state.training.mode !== mode) {
+          state.training.mode = mode;
+          state.training.days = clone(state.training.programs?.[mode] || state.training.days || []);
+          if (!state.training.days.some((day) => day.id === state.training.selectedDayId)) {
+            state.training.selectedDayId = state.training.days[0]?.id || 'day1';
+          }
+          if (state.routineModalOpen) {
+            const selectedTraining = getTrainingRoutineForDate(state.selectedRoutineDate || state.activeDate);
+            state.selectedExerciseVideoId = selectedTraining?.exercises?.[0]?.id || null;
+            primeExerciseMedia(getExerciseById(state.selectedExerciseVideoId));
+          }
+        }
+        render();
+        queueSave();
+        break;
+      }
       case 'select-training-day':
         state.training.selectedDayId = actionTarget.dataset.dayId;
         render();
@@ -1023,7 +1090,7 @@
 
   function normalizePlanMeals(plan, date, fillMissing = false) {
     const source = plan && typeof plan === 'object' ? plan : { meals: {} };
-    const normalized = { date, meals: {} };
+    const normalized = { date, meals: {}, objectivesCompleted: Boolean(source.objectivesCompleted) };
 
     MEAL_ORDER.forEach((slot) => {
       const currentMeal = source.meals?.[slot] || {};
@@ -1192,18 +1259,21 @@
   }
 
   function createTrainingState() {
-    const program = buildTrainingProgram();
-    const logsByDate = seedTrainingLogs(program);
+    const programs = buildTrainingPrograms();
     return {
       selectedDayId: 'day1',
-      days: program,
-      logsByDate,
-      notes: 'Programa Torso/Pierna 4 días para hipertrofia con sobrecarga progresiva.',
+      days: clone(programs.gym),
+      programs,
+      logsByDate: seedTrainingLogs(programs.gym),
+      exerciseTargets: {},
+      mode: 'gym',
+      notes: 'Programa Torso/Pierna 4 días para hipertrofia con sobrecarga progresiva. Incluye alternativa de gym y calistenia.',
     };
   }
 
-  function buildTrainingProgram() {
-    return [
+  function buildTrainingPrograms() {
+    return {
+      gym: [
       {
         id: 'day1',
         name: 'Torso',
@@ -1267,7 +1337,84 @@
           { id: 'seated-calf-raise', name: 'Gemelos sentado', series: 4, repRange: '15-20' },
         ],
       },
-    ];
+      ],
+      calisthenia: [
+        {
+          id: 'day1',
+          name: 'Torso',
+          focus: 'Empuje / Tirón',
+          badge: 'Día 1',
+          exercises: [
+            { id: 'pushups-standard', name: 'Flexiones estándar', series: 4, repRange: '8-15' },
+            { id: 'inverted-row', name: 'Remo invertido en barra baja', series: 4, repRange: '8-12' },
+            { id: 'decline-pushup', name: 'Flexiones declinadas', series: 3, repRange: '8-12' },
+            { id: 'pullup-assisted', name: 'Dominadas asistidas o negativas', series: 3, repRange: '5-8' },
+            { id: 'pike-pushup', name: 'Pike push-up', series: 3, repRange: '6-10' },
+            { id: 'hollow-hold', name: 'Hollow hold', series: 3, repRange: '20-40 s' },
+          ],
+        },
+        {
+          id: 'day2',
+          name: 'Pierna',
+          focus: 'Cuádriceps / Control',
+          badge: 'Día 2',
+          exercises: [
+            { id: 'air-squat', name: 'Sentadilla aire', series: 4, repRange: '15-25' },
+            { id: 'bulgarian-bodyweight', name: 'Sentadilla búlgara a peso corporal', series: 3, repRange: '10-15 por pierna' },
+            { id: 'step-up', name: 'Step-up en banco', series: 3, repRange: '10-12 por pierna' },
+            { id: 'single-leg-hip-thrust', name: 'Hip thrust a una pierna', series: 3, repRange: '10-15 por pierna' },
+            { id: 'calf-raises-bodyweight', name: 'Elevaciones de gemelos', series: 4, repRange: '20-30' },
+          ],
+        },
+        {
+          id: 'day3',
+          name: 'Descanso',
+          focus: 'Recuperación',
+          badge: 'Día 3',
+          restDay: true,
+          message: 'Recuperación Activa',
+          exercises: [],
+        },
+        {
+          id: 'day4',
+          name: 'Torso',
+          focus: 'Volumen / Estabilidad',
+          badge: 'Día 4',
+          exercises: [
+            { id: 'diamond-pushup', name: 'Flexiones diamante', series: 4, repRange: '8-12' },
+            { id: 'chinup-assisted', name: 'Dominadas supinas asistidas', series: 4, repRange: '5-8' },
+            { id: 'pseudo-planche-pushup', name: 'Flexiones pseudo planche', series: 3, repRange: '6-10' },
+            { id: 'archer-row', name: 'Remo arquero en barra baja', series: 3, repRange: '8-10 por lado' },
+            { id: 'handstand-hold', name: 'Aguante de handstand en pared', series: 3, repRange: '20-30 s' },
+            { id: 'bodyweight-curl', name: 'Curl de bíceps isométrico con toalla', series: 3, repRange: '20-30 s' },
+          ],
+        },
+        {
+          id: 'day5',
+          name: 'Pierna',
+          focus: 'Posterior / Core',
+          badge: 'Día 5',
+          exercises: [
+            { id: 'single-leg-rdl-bodyweight', name: 'Peso muerto rumano a una pierna', series: 4, repRange: '10-12 por pierna' },
+            { id: 'nordic-curl-assist', name: 'Nordic curl asistido', series: 3, repRange: '5-8' },
+            { id: 'walking-lunge', name: 'Zancadas caminando', series: 3, repRange: '12-20 por pierna' },
+            { id: 'cossack-squat', name: 'Sentadilla Cossack', series: 3, repRange: '8-10 por lado' },
+            { id: 'calf-raises-single-leg', name: 'Gemelos a una pierna', series: 4, repRange: '15-25 por pierna' },
+          ],
+        },
+      ],
+    };
+  }
+
+  function normalizeTrainingPrograms(programs, fallbackGymDays = []) {
+    const defaults = buildTrainingPrograms();
+    const incoming = programs && typeof programs === 'object' ? programs : {};
+    const gym = Array.isArray(incoming.gym) ? incoming.gym : (Array.isArray(fallbackGymDays) && fallbackGymDays.length ? fallbackGymDays : defaults.gym);
+    const calisthenia = Array.isArray(incoming.calisthenia) ? incoming.calisthenia : defaults.calisthenia;
+    return {
+      gym: clone(gym),
+      calisthenia: clone(calisthenia),
+    };
   }
 
   function seedTrainingLogs(program) {
@@ -1304,6 +1451,60 @@
     };
 
     return logsByDate;
+  }
+
+  function sanitizeTrainingTargets(targets) {
+    if (!targets || typeof targets !== 'object') return {};
+    return Object.entries(targets).reduce((acc, [exerciseId, value]) => {
+      const incoming = value && typeof value === 'object' ? value : {};
+      const minWeight = Number.isFinite(Number(incoming.minWeight)) ? Number(incoming.minWeight) : null;
+      const maxWeight = Number.isFinite(Number(incoming.maxWeight)) ? Number(incoming.maxWeight) : null;
+      const incrementKg = Number.isFinite(Number(incoming.incrementKg)) ? Math.max(0.5, Number(incoming.incrementKg)) : 2;
+      const unit = incoming.unit === 'reps' ? 'reps' : 'kg';
+      if (minWeight == null && maxWeight == null && !incrementKg) return acc;
+      acc[exerciseId] = {
+        minWeight,
+        maxWeight,
+        incrementKg,
+        unit,
+        updatedAt: incoming.updatedAt || null,
+      };
+      return acc;
+    }, {});
+  }
+
+  function getExerciseWeightPlan(exerciseId) {
+    const stored = state.training.exerciseTargets?.[exerciseId] || null;
+    const session = getLastSessionForExercise(exerciseId);
+    const isBodyweight = isCalistheniaExercise(exerciseId);
+    const sessionValues = Array.isArray(session?.sets) ? session.sets.map((set) => Number(isBodyweight ? set.reps : set.weight) || 0).filter((value) => value > 0) : [];
+    const sessionMin = sessionValues.length ? Math.min(...sessionValues) : null;
+    const sessionMax = sessionValues.length ? Math.max(...sessionValues) : null;
+    const storedIncrement = Number.isFinite(Number(stored?.incrementKg)) ? Number(stored.incrementKg) : null;
+    const incrementValue = storedIncrement != null ? Math.max(isBodyweight ? 1 : 0.5, storedIncrement) : 2;
+    const currentMin = stored?.minWeight ?? sessionMin;
+    const currentMax = stored?.maxWeight ?? sessionMax;
+    const nextMin = currentMin == null ? null : roundTrainingValue(currentMin + incrementValue, isBodyweight);
+    const nextMax = currentMax == null ? null : roundTrainingValue(currentMax + incrementValue + 1, isBodyweight);
+    return {
+      currentMin,
+      currentMax,
+      nextMin,
+      nextMax,
+      incrementValue,
+      unit: isBodyweight ? 'reps' : 'kg',
+      source: stored ? 'custom' : session ? 'last-session' : 'empty',
+    };
+  }
+
+  function roundTrainingWeight(value) {
+    return Math.round(Number(value) * 2) / 2;
+  }
+
+  function formatWeight(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '';
+    return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(1).replace(/\.0$/, '');
   }
 
   function createEmptyRecipeDraft() {
@@ -1458,9 +1659,14 @@
     return `
       <section class="hero glass-panel calendar-hero">
         <div class="hero-copy">
-          <p class="eyebrow">Calendario semanal</p>
-          <h2>${formatWeekRangeLabel(weekDates[0], weekDates[6])}</h2>
-            <p class="subtitle">Semana completa de lunes a domingo con 5 comidas por día. Selecciona un día para entrar al detalle.</p>
+          <p class="eyebrow">Calendario ${state.planViewMode === 'month' ? 'mensual' : state.planViewMode === 'day' ? 'diario' : 'semanal'}</p>
+          <h2>${state.planViewMode === 'month' ? formatMonthLabel(state.activeDate) : state.planViewMode === 'day' ? formatDateLabel(selectedDate) : formatWeekRangeLabel(weekDates[0], weekDates[6])}</h2>
+          <p class="subtitle">${state.planViewMode === 'month' ? 'Revisa el mes completo y entra en cada día.' : state.planViewMode === 'day' ? 'Vista centrada en un solo día con sus comidas y el check de objetivos.' : 'Semana completa de lunes a domingo con 5 comidas por día. Selecciona un día para entrar al detalle.'}</p>
+          <div class="plan-view-toggle" role="tablist" aria-label="Cambiar vista del plan">
+            <button class="chip chip--filter ${state.planViewMode === 'week' ? 'is-active' : ''}" type="button" data-view-mode="week">Semana</button>
+            <button class="chip chip--filter ${state.planViewMode === 'day' ? 'is-active' : ''}" type="button" data-view-mode="day">Día</button>
+            <button class="chip chip--filter ${state.planViewMode === 'month' ? 'is-active' : ''}" type="button" data-view-mode="month">Mes</button>
+          </div>
           <div class="progress-rail" aria-label="Progreso semanal de proteína"><span class="progress-rail__label">Proteína</span><div class="progress-rail__track"><span style="width:${weeklyCompletion}%"></span></div><span class="progress-rail__value">${weeklyCompletion}%</span></div>
         </div>
         <div class="hero-actions hero-actions--stacked">
@@ -1472,6 +1678,18 @@
         </div>
       </section>
 
+      ${renderPlanView(state.planViewMode, weekDates, weekPlans, weekTotals, selectedDate, selectedPlan, selectedTotals)}
+    `;
+  }
+
+  function renderPlanView(viewMode, weekDates, weekPlans, weekTotals, selectedDate, selectedPlan, selectedTotals) {
+    if (viewMode === 'day') return renderDailyPlanView(selectedDate, selectedPlan, selectedTotals, weekTotals);
+    if (viewMode === 'month') return renderMonthlyPlanView(selectedDate);
+    return renderWeeklyPlanView(weekDates, weekPlans, weekTotals, selectedDate, selectedTotals);
+  }
+
+  function renderWeeklyPlanView(weekDates, weekPlans, weekTotals, selectedDate, selectedTotals) {
+    return `
       <section class="dashboard-grid dashboard-grid--secondary">
         <article class="glass-panel summary-card summary-card--week">
           <h3 class="section-title">Resumen semanal</h3>
@@ -1499,6 +1717,99 @@
     `;
   }
 
+  function renderDailyPlanView(selectedDate, selectedPlan, selectedTotals, weekTotals) {
+    const objectiveCompleted = Boolean(selectedPlan.objectivesCompleted);
+    const training = getTrainingRoutineForDate(selectedDate);
+    const dayMeals = MEAL_ORDER.map((slot) => renderWeekMealBlock(selectedDate, slot, selectedPlan.meals[slot], true)).join('');
+    return `
+      <section class="dashboard-grid dashboard-grid--secondary dashboard-grid--daily">
+        <article class="glass-panel summary-card summary-card--day">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Plan diario</p>
+              <h3>${formatDateLabel(selectedDate)}</h3>
+              <p class="muted">Revisa las comidas del día y marca si has cumplido los objetivos.</p>
+            </div>
+            <label class="check-item check-item--pill">
+              <input type="checkbox" data-action="toggle-day-objective" data-date="${selectedDate}" ${objectiveCompleted ? 'checked' : ''}>
+              <span>Objetivos cumplidos</span>
+            </label>
+          </div>
+          <div class="summary-cards">
+            ${renderMetricCard('Kcal del día', `${selectedTotals.calories} kcal`, `Semana: ${weekTotals.calories.toLocaleString('es-ES')} kcal`)}
+            ${renderMetricCard('Proteína del día', `${selectedTotals.protein} g`, `${Math.round((selectedTotals.protein / state.goals.protein) * 100)}% del objetivo`)}
+            ${renderMetricCard('Estado', objectiveCompleted ? 'Cumplido' : 'Pendiente', objectiveCompleted ? 'Guardado en este día' : 'Marca cuando termines')}
+            ${renderMetricCard('Rutina', training.badge, training.restDay ? training.message : training.focus)}
+          </div>
+        </article>
+
+        <article class="glass-panel snapshot-card snapshot-card--calendar">
+          <h3 class="section-title">Atajos</h3>
+          <div class="action-stack">
+            <button class="btn btn--ghost" data-action="open-training-routine" data-date="${selectedDate}">Rutina de hoy</button>
+            <button class="btn btn--ghost" data-action="open-recipes">Explorar recetas</button>
+            <button class="btn btn--ghost" data-action="generate-shopping">Ver lista de compra</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="daily-plan-grid">
+        <article class="glass-panel section-panel">
+          <div class="section-heading"><div><p class="eyebrow">Comidas del día</p><h3>${selectedDate}</h3></div><span class="step-pill">${MEAL_ORDER.length} comidas</span></div>
+          <div class="meal-grid">${dayMeals}</div>
+        </article>
+        <article class="glass-panel section-panel">
+          <div class="section-heading"><div><p class="eyebrow">Rutina</p><h3>${training.badge}</h3></div><button class="btn btn--secondary btn--small" data-action="open-training-routine" data-date="${selectedDate}">Ver</button></div>
+          <p class="muted">${training.restDay ? training.message : `${training.name} · ${training.focus}`}</p>
+          <button class="btn btn--primary" type="button" data-action="toggle-day-objective" data-date="${selectedDate}">${objectiveCompleted ? 'Desmarcar objetivos cumplidos' : 'Marcar objetivos cumplidos'}</button>
+        </article>
+      </section>
+    `;
+  }
+
+  function renderMonthlyPlanView(selectedDate) {
+    const monthCells = getMonthCalendarCells(selectedDate);
+    const monthDates = monthCells.filter((cell) => cell.date);
+    const monthPlans = monthDates.map((cell) => ensurePlanForDate(cell.date));
+    const monthTotals = monthPlans.reduce((acc, plan) => {
+      const totals = getDailyTotals(plan);
+      acc.calories += totals.calories;
+      acc.protein += totals.protein;
+      return acc;
+    }, { calories: 0, protein: 0 });
+    return `
+      <section class="dashboard-grid dashboard-grid--secondary">
+        <article class="glass-panel summary-card summary-card--week">
+          <h3 class="section-title">Resumen mensual</h3>
+          <div class="summary-cards">
+            ${renderMetricCard('Kcal mes', `${monthTotals.calories.toLocaleString('es-ES')}`, 'Suma de días visibles')}
+            ${renderMetricCard('Proteína mes', `${monthTotals.protein} g`, 'Objetivo acumulado')}
+            ${renderMetricCard('Días', `${monthDates.length}`, 'Mes actual')}
+            ${renderMetricCard('Día seleccionado', formatDateLabel(selectedDate), 'Toca un día para entrar')}
+          </div>
+        </article>
+      </section>
+
+      <section class="month-grid" aria-label="Calendario mensual">
+        ${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((label) => `<span class="month-grid__weekday">${label}</span>`).join('')}
+        ${monthCells.map((cell) => cell.date ? renderMonthDayCard(cell.date, ensurePlanForDate(cell.date), cell.date === state.activeDate) : '<div class="month-day month-day--empty" aria-hidden="true"></div>').join('')}
+      </section>
+    `;
+  }
+
+  function renderMonthDayCard(date, plan, isActive) {
+    const totals = getDailyTotals(plan);
+    const objectiveCompleted = Boolean(plan.objectivesCompleted);
+    return `
+      <button class="glass-panel month-day ${isActive ? 'is-active' : ''} ${objectiveCompleted ? 'is-done' : ''}" type="button" data-action="select-week-day" data-date="${date}">
+        <strong>${new Intl.DateTimeFormat('es-ES', { day: '2-digit' }).format(new Date(`${date}T12:00:00`))}</strong>
+        <span>${totals.calories} kcal</span>
+        <small>${totals.protein} g proteína</small>
+        <small>${objectiveCompleted ? 'Objetivos cumplidos' : 'Pendiente'}</small>
+      </button>
+    `;
+  }
+
   function renderWeekDayCard(date, plan, index, isActive) {
     const totals = getDailyTotals(plan);
     const training = getWeeklyTrainingDay(index);
@@ -1513,6 +1824,7 @@
           <div class="day-card__stats">
             <strong>${training.badge}</strong>
             <small>${MEAL_ORDER.length} comidas</small>
+            <small class="day-card__status ${plan.objectivesCompleted ? 'is-done' : ''}">${plan.objectivesCompleted ? 'Objetivos cumplidos' : 'Pendiente'}</small>
           </div>
         </button>
 
@@ -1660,6 +1972,27 @@
     return `${start} · ${end}`;
   }
 
+  function formatMonthLabel(value) {
+    return new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date(`${value}T12:00:00`));
+  }
+
+  function getMonthCalendarCells(anchorDate) {
+    const reference = new Date(`${anchorDate}T12:00:00`);
+    const year = reference.getFullYear();
+    const month = reference.getMonth();
+    const first = new Date(year, month, 1);
+    const last = new Date(year, month + 1, 0);
+    const cells = [];
+    const mondayIndex = (first.getDay() + 6) % 7;
+    for (let index = 0; index < mondayIndex; index += 1) {
+      cells.push({ date: null });
+    }
+    for (let day = 1; day <= last.getDate(); day += 1) {
+      cells.push({ date: dateKey(new Date(year, month, day, 12, 0, 0)) });
+    }
+    return cells;
+  }
+
   function weekdayLabel(value) {
     return new Intl.DateTimeFormat('es-ES', { weekday: 'long' }).format(new Date(`${value}T12:00:00`));
   }
@@ -1794,6 +2127,59 @@
     return state.training.days.find((day) => day.id === dayId) || state.training.days[0];
   }
 
+  function isCalistheniaExercise(exerciseId) {
+    return Boolean(state.training.programs?.calisthenia?.some((day) => (day.exercises || []).some((exercise) => exercise.id === exerciseId)));
+  }
+
+  function roundTrainingValue(value, isBodyweight = false) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    return isBodyweight ? Math.max(1, Math.round(numeric)) : roundTrainingWeight(numeric);
+  }
+
+  function formatTrainingValue(value, isBodyweight = false) {
+    const numeric = roundTrainingValue(value, isBodyweight);
+    if (numeric == null) return '';
+    return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(1).replace(/\.0$/, '');
+  }
+
+  function getExerciseProgressLabels(exerciseId) {
+    const isBodyweight = isCalistheniaExercise(exerciseId);
+    return {
+      isBodyweight,
+      unitLabel: isBodyweight ? 'repeticiones' : 'kg',
+      currentLabel: isBodyweight ? 'Franja de repeticiones' : 'Franja de peso',
+      valueLabel: isBodyweight ? 'Repeticiones realizadas' : 'Peso levantado',
+      inputMinLabel: isBodyweight ? 'Franja mínima (reps)' : 'Franja mínima',
+      inputMaxLabel: isBodyweight ? 'Franja máxima (reps)' : 'Franja máxima',
+      inputStepLabel: isBodyweight ? 'Incremento (reps)' : 'Incremento',
+      placeholder: isBodyweight ? 'reps' : 'kg',
+      applyLabel: isBodyweight ? 'Usar en reps' : 'Usar en el peso',
+    };
+  }
+
+  function normalizeTrainingMode(mode) {
+    return mode === 'calisthenia' ? 'calisthenia' : 'gym';
+  }
+
+  function getTrainingModeLabel(mode = state.training.mode) {
+    return TRAINING_MODE_LABELS[normalizeTrainingMode(mode)] || TRAINING_MODE_LABELS.gym;
+  }
+
+  function renderTrainingModeTabs(activeMode = state.training.mode) {
+    const mode = normalizeTrainingMode(activeMode);
+    return `
+      <div class="training-mode-tabs" role="tablist" aria-label="Alternativas de rutina">
+        ${Object.entries(TRAINING_MODE_LABELS).map(([key, label]) => `
+          <button class="training-mode-tab ${mode === key ? 'is-active' : ''}" type="button" data-action="set-training-mode" data-mode="${key}" role="tab" aria-selected="${mode === key ? 'true' : 'false'}">
+            <strong>${escapeHtml(label)}</strong>
+            <span>${key === 'gym' ? 'Rutina predeterminada' : 'Alternativa calisténica'}</span>
+          </button>
+        `).join('')}
+      </div>
+    `;
+  }
+
   function getTrainingLogDates() {
     return Object.keys(state.training.logsByDate).sort();
   }
@@ -1810,28 +2196,41 @@
     return null;
   }
 
-  function summarizeSession(session) {
+  function summarizeSession(session, exerciseId) {
     if (!session) return 'Sin sesión previa registrada.';
-    const bestWeight = Math.max(...session.sets.map((set) => Number(set.weight) || 0));
+    const isBodyweight = isCalistheniaExercise(exerciseId);
+    const loadValues = session.sets.map((set) => Number(isBodyweight ? set.reps : set.weight) || 0).filter((value) => value > 0);
+    const bestLoad = loadValues.length ? Math.max(...loadValues) : 0;
     const reps = session.sets.map((set) => Number(set.reps) || 0).join(' / ');
     const rir = session.sets.map((set) => `RIR ${set.rir}`).join(' · ');
     const dateLabel = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short' }).format(new Date(`${session.date}T12:00:00`));
-    return `${bestWeight} kg · ${reps} reps · ${rir} · ${dateLabel}`;
+    return isBodyweight
+      ? `${bestLoad} reps · ${reps} reps · ${rir} · ${dateLabel}`
+      : `${bestLoad} kg · ${reps} reps · ${rir} · ${dateLabel}`;
+  }
+
+  function formatTrainingSetSummary(set, exerciseId) {
+    const isBodyweight = isCalistheniaExercise(exerciseId);
+    return isBodyweight
+      ? `${Number(set.reps) || 0} reps · RIR ${set.rir}`
+      : `${Number(set.weight) || 0} kg · ${Number(set.reps) || 0} reps · RIR ${set.rir}`;
   }
 
   function renderTraining() {
     const selectedDay = getTrainingDay();
     const currentLogs = state.training.logsByDate[todayKey()] || {};
     const dayIsRest = Boolean(selectedDay.restDay);
+    const trainingVerb = state.training.mode === 'calisthenia' ? 'repeticiones y RIR' : 'peso, repeticiones y RIR';
 
     return `
       <section class="panel-stack">
         <article class="glass-panel section-panel">
           <div class="section-heading">
             <div><p class="eyebrow">Entrenamiento</p><h2>Torso / Pierna 4 días · Sobrecarga progresiva</h2></div>
-            <span class="step-pill">${selectedDay.badge}</span>
+            <span class="step-pill">${selectedDay.badge} · Modo ${getTrainingModeLabel()}</span>
           </div>
-          <p class="muted">Registra peso, repeticiones y RIR. La app buscará automáticamente la última sesión previa de cada ejercicio.</p>
+          <p class="muted">Registra ${trainingVerb}. La app buscará automáticamente la última sesión previa de cada ejercicio.</p>
+          ${renderTrainingModeTabs()}
         </article>
 
         <section class="training-days">
@@ -1861,6 +2260,8 @@
   function renderExerciseCard(day, exercise, currentLogs) {
     const session = getLastSessionForExercise(exercise.id);
     const todaySets = currentLogs?.[exercise.id] || [];
+    const weightPlan = getExerciseWeightPlan(exercise.id);
+    const progress = getExerciseProgressLabels(exercise.id);
     return `
       <article class="glass-panel exercise-card" data-exercise-id="${exercise.id}">
         <div class="section-heading">
@@ -1873,20 +2274,38 @@
         </div>
 
         <div class="last-session">
-          <strong>${summarizeSession(session)}</strong>
-          <small>Intenta superar esta referencia con una serie más sólida o más reps.</small>
+          <strong>${summarizeSession(session, exercise.id)}</strong>
+          <small>Intenta superar esta referencia con una serie más sólida o más ${progress.unitLabel}.</small>
+        </div>
+
+        <div class="exercise-target">
+          <div class="exercise-target__header">
+            <div>
+              <span class="eyebrow">Progresión</span>
+              <strong>${weightPlan.currentMin != null && weightPlan.currentMax != null ? `${formatTrainingValue(weightPlan.currentMin, progress.isBodyweight)} - ${formatTrainingValue(weightPlan.currentMax, progress.isBodyweight)} ${progress.unitLabel}` : `Sin franja de ${progress.unitLabel} guardada`}</strong>
+              <p class="muted">Próxima sugerencia: ${weightPlan.nextMin != null && weightPlan.nextMax != null ? `${formatTrainingValue(weightPlan.nextMin, progress.isBodyweight)} - ${formatTrainingValue(weightPlan.nextMax, progress.isBodyweight)} ${progress.unitLabel}` : 'registra una serie primero'}</p>
+            </div>
+            <button class="btn btn--ghost btn--small" type="button" data-action="apply-training-target" data-exercise-id="${exercise.id}">${progress.applyLabel}</button>
+          </div>
+
+          <div class="exercise-target__form">
+            <label class="input-group"><span>${progress.inputMinLabel}</span><input data-field="target-min" type="number" min="0" step="${progress.isBodyweight ? '1' : '0.5'}" placeholder="${progress.placeholder}" value="${weightPlan.currentMin ?? ''}"></label>
+            <label class="input-group"><span>${progress.inputMaxLabel}</span><input data-field="target-max" type="number" min="0" step="${progress.isBodyweight ? '1' : '0.5'}" placeholder="${progress.placeholder}" value="${weightPlan.currentMax ?? ''}"></label>
+            <label class="input-group"><span>${progress.inputStepLabel}</span><input data-field="target-step" type="number" min="${progress.isBodyweight ? '1' : '0.5'}" step="${progress.isBodyweight ? '1' : '0.5'}" placeholder="${progress.placeholder}" value="${weightPlan.incrementValue}"></label>
+            <button class="btn btn--secondary" type="button" data-action="save-training-target" data-exercise-id="${exercise.id}">Guardar objetivo</button>
+          </div>
         </div>
 
         <div class="exercise-log">
-          <label class="input-group"><span>Peso levantado</span><input data-field="weight" type="number" min="0" step="0.5" placeholder="kg"></label>
-          <label class="input-group"><span>Repeticiones</span><input data-field="reps" type="number" min="1" step="1" placeholder="reps"></label>
+          ${progress.isBodyweight ? '' : `<label class="input-group"><span>${progress.valueLabel}</span><input data-field="weight" type="number" min="0" step="0.5" placeholder="${progress.placeholder}" value="${weightPlan.nextMax ?? ''}"></label>`}
+          <label class="input-group"><span>${progress.isBodyweight ? 'Repeticiones realizadas' : 'Repeticiones'}</span><input data-field="reps" type="number" min="1" step="1" placeholder="reps" value="${progress.isBodyweight && weightPlan.nextMax != null ? formatTrainingValue(weightPlan.nextMax, true) : ''}"></label>
           <label class="input-group"><span>RIR</span><input data-field="rir" type="number" min="0" max="5" step="1" placeholder="RIR"></label>
           <button class="btn btn--primary" type="button" data-action="save-training-set" data-exercise-id="${exercise.id}">Guardar serie</button>
         </div>
 
         <div class="session-list">
           <h4>Sesión de hoy</h4>
-          ${todaySets.length ? todaySets.map((set, index) => `<div class="session-item"><span>Serie ${index + 1}</span><strong>${set.weight} kg · ${set.reps} reps · RIR ${set.rir}</strong></div>`).join('') : '<p class="muted">Aún no hay series registradas hoy.</p>'}
+          ${todaySets.length ? todaySets.map((set, index) => `<div class="session-item"><span>Serie ${index + 1}</span><strong>${formatTrainingSetSummary(set, exercise.id)}</strong></div>`).join('') : '<p class="muted">Aún no hay series registradas hoy.</p>'}
         </div>
       </article>
     `;
@@ -1896,12 +2315,14 @@
     const card = button.closest('[data-exercise-id]');
     if (!card) return;
     const exerciseId = card.dataset.exerciseId;
-    const weight = Number(card.querySelector('[data-field="weight"]')?.value);
+    const isBodyweight = isCalistheniaExercise(exerciseId);
+    const weightField = card.querySelector('[data-field="weight"]');
+    const weight = Number(weightField?.value);
     const reps = Number(card.querySelector('[data-field="reps"]')?.value);
     const rir = Number(card.querySelector('[data-field="rir"]')?.value);
 
-    if (!exerciseId || !weight || !reps || Number.isNaN(rir)) {
-      state.status = { text: 'Completa peso, repeticiones y RIR para guardar la serie.', type: 'warning' };
+    if (!exerciseId || !reps || Number.isNaN(rir) || (!isBodyweight && !weight)) {
+      state.status = { text: isBodyweight ? 'Completa repeticiones y RIR para guardar la serie.' : 'Completa peso, repeticiones y RIR para guardar la serie.', type: 'warning' };
       render();
       return;
     }
@@ -1914,10 +2335,50 @@
       state.training.logsByDate[today][exerciseId] = [];
     }
 
-    const entry = { weight, reps, rir, loggedAt: new Date().toISOString(), dayId: state.training.selectedDayId };
+    const entry = { weight: isBodyweight ? null : weight, reps, rir, loadUnit: isBodyweight ? 'reps' : 'kg', loggedAt: new Date().toISOString(), dayId: state.training.selectedDayId };
     state.training.logsByDate[today][exerciseId].push(entry);
-    state.status = { text: 'Serie guardada. La próxima sesión te mostrará esta referencia como última sesión.', type: 'success' };
+    state.status = { text: isBodyweight ? 'Serie de calistenia guardada. La próxima sesión te mostrará esta referencia como última sesión.' : 'Serie guardada. La próxima sesión te mostrará esta referencia como última sesión.', type: 'success' };
     queueSave();
+    render();
+  }
+
+  function saveTrainingTarget(button) {
+    const card = button.closest('[data-exercise-id]');
+    if (!card) return;
+    const exerciseId = card.dataset.exerciseId;
+    const isBodyweight = isCalistheniaExercise(exerciseId);
+    const minValue = Number(card.querySelector('[data-field="target-min"]')?.value);
+    const maxValue = Number(card.querySelector('[data-field="target-max"]')?.value);
+    const incrementValue = Number(card.querySelector('[data-field="target-step"]')?.value);
+
+    if (!exerciseId || Number.isNaN(minValue) || Number.isNaN(maxValue) || Number.isNaN(incrementValue)) {
+      state.status = { text: isBodyweight ? 'Completa la franja mínima, máxima e incremento de repeticiones para guardar el objetivo.' : 'Completa la franja mínima, máxima e incremento para guardar el objetivo.', type: 'warning' };
+      render();
+      return;
+    }
+
+    state.training.exerciseTargets[exerciseId] = {
+      minWeight: minValue,
+      maxWeight: maxValue,
+      incrementKg: incrementValue,
+      unit: isBodyweight ? 'reps' : 'kg',
+      updatedAt: new Date().toISOString(),
+    };
+    state.status = { text: isBodyweight ? 'Objetivo de repeticiones guardado para este ejercicio.' : 'Objetivo de peso guardado para este ejercicio.', type: 'success' };
+    queueSave();
+    render();
+  }
+
+  function applyTrainingTarget(button) {
+    const card = button.closest('[data-exercise-id]');
+    if (!card) return;
+    const exerciseId = card.dataset.exerciseId;
+    const weightPlan = getExerciseWeightPlan(exerciseId);
+    const isBodyweight = isCalistheniaExercise(exerciseId);
+    const targetField = card.querySelector(isBodyweight ? '[data-field="reps"]' : '[data-field="weight"]');
+    if (!targetField || weightPlan.nextMax == null) return;
+    targetField.value = formatTrainingValue(weightPlan.nextMax, isBodyweight);
+    state.status = { text: isBodyweight ? 'Repeticiones sugeridas cargadas en la serie. Ajusta si lo necesitas.' : 'Peso sugerido cargado en la serie. Ajusta si lo necesitas.', type: 'info' };
     render();
   }
 
@@ -2087,6 +2548,8 @@
     const exercises = Array.isArray(training?.exercises) ? training.exercises : [];
     const selectedExercise = (state.selectedExerciseVideoId && getExerciseById(state.selectedExerciseVideoId)) || exercises[0] || null;
     const selectedMedia = selectedExercise ? getExerciseMediaDescriptor(selectedExercise) : { kind: 'empty', src: '' };
+    const weightPlan = selectedExercise ? getExerciseWeightPlan(selectedExercise.id) : null;
+    const progress = selectedExercise ? getExerciseProgressLabels(selectedExercise.id) : getExerciseProgressLabels(null);
     const selectedCacheKey = selectedExercise ? getExerciseMediaCacheKey(selectedExercise) : null;
     const isRemoteConfigured = Boolean(state.exerciseMediaConfig.enabled && state.exerciseMediaConfig.rapidApiKey);
     const isLoadingMedia = Boolean(selectedCacheKey && state.exerciseMediaRequests[selectedCacheKey]);
@@ -2097,7 +2560,7 @@
     return `
       <div class="modal-backdrop" data-action="close-training-routine">
         <section class="glass-panel modal modal--routine" role="dialog" aria-modal="true" aria-labelledby="routine-modal-title">
-          <header class="detail-hero detail-hero--video" style="background: linear-gradient(155deg, #0f172a, #111827);">
+          <header class="detail-hero detail-hero--video" style="background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96)); color: #0f172a; border-bottom: 1px solid rgba(15, 23, 42, 0.08);">
             <div>
               <p class="eyebrow">Rutina de hoy</p>
               <h2 id="routine-modal-title">${escapeHtml(training?.badge || 'Rutina')}</h2>
@@ -2105,6 +2568,8 @@
             </div>
             <button class="btn btn--ghost" type="button" data-action="close-training-routine">Cerrar</button>
           </header>
+
+          ${renderTrainingModeTabs()}
 
           <div class="routine-modal-layout">
             <aside class="routine-modal-list">
@@ -2140,6 +2605,25 @@
               </div>
 
               ${selectedExercise ? `
+                <article class="glass-panel section-panel exercise-target" data-exercise-id="${selectedExercise.id}">
+                  <div class="exercise-target__header">
+                    <div>
+                      <span class="eyebrow">${progress.currentLabel}</span>
+                      <strong>${weightPlan?.currentMin != null && weightPlan?.currentMax != null ? `${formatTrainingValue(weightPlan.currentMin, progress.isBodyweight)} - ${formatTrainingValue(weightPlan.currentMax, progress.isBodyweight)} ${progress.unitLabel}` : `Sin franja de ${progress.unitLabel} guardada`}</strong>
+                      <p class="muted">Última franja usada: ${weightPlan?.currentMin != null && weightPlan?.currentMax != null ? `${formatTrainingValue(weightPlan.currentMin, progress.isBodyweight)} - ${formatTrainingValue(weightPlan.currentMax, progress.isBodyweight)} ${progress.unitLabel}` : 'registra una serie para guardar tu referencia'}</p>
+                      <p class="muted">Próxima sugerencia: ${weightPlan?.nextMin != null && weightPlan?.nextMax != null ? `${formatTrainingValue(weightPlan.nextMin, progress.isBodyweight)} - ${formatTrainingValue(weightPlan.nextMax, progress.isBodyweight)} ${progress.unitLabel}` : 'aún no hay una progresión calculada'}</p>
+                    </div>
+                    <button class="btn btn--ghost btn--small" type="button" data-action="apply-training-target" data-exercise-id="${selectedExercise.id}">${progress.applyLabel}</button>
+                  </div>
+
+                  <div class="exercise-target__form">
+                    <label class="input-group"><span>${progress.inputMinLabel}</span><input data-field="target-min" type="number" min="0" step="${progress.isBodyweight ? '1' : '0.5'}" placeholder="${progress.placeholder}" value="${weightPlan?.currentMin ?? ''}"></label>
+                    <label class="input-group"><span>${progress.inputMaxLabel}</span><input data-field="target-max" type="number" min="0" step="${progress.isBodyweight ? '1' : '0.5'}" placeholder="${progress.placeholder}" value="${weightPlan?.currentMax ?? ''}"></label>
+                    <label class="input-group"><span>${progress.inputStepLabel}</span><input data-field="target-step" type="number" min="${progress.isBodyweight ? '1' : '0.5'}" step="${progress.isBodyweight ? '1' : '0.5'}" placeholder="${progress.placeholder}" value="${weightPlan?.incrementValue ?? 2}"></label>
+                    <button class="btn btn--secondary" type="button" data-action="save-training-target" data-exercise-id="${selectedExercise.id}">Guardar objetivo</button>
+                  </div>
+                </article>
+
                 ${selectedMedia.kind === 'loading' && isLoadingMedia && !cachedEntry ? `
                   <div class="exercise-demo-wrap empty-state">
                     <p class="eyebrow">Cargando vídeo real</p>
@@ -2150,7 +2634,7 @@
                   <div class="exercise-demo-wrap">
                     ${selectedMedia.kind === 'video' ? `
                       <video class="exercise-demo" autoplay muted loop playsinline preload="metadata" poster="${escapeAttr(getExerciseLocalFallbackUrl(selectedExercise))}">
-                        <source src="${escapeAttr(selectedMedia.src)}" type="video/mp4">
+                        <source src="${escapeAttr(selectedMedia.src)}" type="video/webm">
                       </video>
                     ` : `
                       <img class="exercise-demo" src="${escapeAttr(selectedMedia.src)}" alt="${escapeAttr(selectedExercise.name)}" loading="lazy" decoding="async">
@@ -2164,7 +2648,7 @@
                   </article>
                   <article class="glass-panel section-panel">
                     <h4>Consejo rápido</h4>
-                    <p class="muted">Mantén la técnica limpia, controla el recorrido y usa el rango de repeticiones como referencia antes de subir carga. ${selectedMedia.kind === 'video' ? 'Este clip local se repite en bucle para una experiencia más ligera.' : isRemoteMedia ? 'Este respaldo viene desde ExerciseDB.' : ''}</p>
+                    <p class="muted">Mantén la técnica limpia, controla el recorrido y usa el rango de ${progress.unitLabel} como referencia antes de progresar. ${selectedMedia.kind === 'video' ? 'Este clip local se repite en bucle para una experiencia más ligera.' : isRemoteMedia ? 'Este respaldo viene desde ExerciseDB.' : ''}</p>
                   </article>
                 </div>
               ` : `
@@ -2531,6 +3015,28 @@
       'standing-calf-raise': 'standing calf raise',
       'seated-calf-raise': 'seated calf raise',
       'lateral-raise': 'lateral raise',
+      'pushups-standard': 'push up',
+      'inverted-row': 'inverted row',
+      'decline-pushup': 'decline push up',
+      'pullup-assisted': 'assisted pull up',
+      'pike-pushup': 'pike push up',
+      'hollow-hold': 'hollow hold',
+      'air-squat': 'bodyweight squat',
+      'bulgarian-bodyweight': 'bulgarian split squat bodyweight',
+      'step-up': 'step up exercise',
+      'single-leg-hip-thrust': 'single leg hip thrust',
+      'calf-raises-bodyweight': 'calf raise bodyweight',
+      'diamond-pushup': 'diamond push up',
+      'chinup-assisted': 'chin up assisted',
+      'pseudo-planche-pushup': 'pseudo planche push up',
+      'archer-row': 'archer row',
+      'handstand-hold': 'handstand hold',
+      'bodyweight-curl': 'towel biceps curl',
+      'single-leg-rdl-bodyweight': 'single leg romanian deadlift bodyweight',
+      'nordic-curl-assist': 'nordic curl assisted',
+      'walking-lunge': 'walking lunge',
+      'cossack-squat': 'cossack squat',
+      'calf-raises-single-leg': 'single leg calf raise',
     };
     return queryMap[exercise?.id] || exercise?.videoQuery || exercise?.name || '';
   }
@@ -2559,6 +3065,28 @@
       'standing-calf-raise': 'real/squat.webm',
       'seated-calf-raise': 'real/squat.webm',
       'lateral-raise': 'real/shoulder-press.webm',
+      'pushups-standard': 'real/push-up.webm',
+      'decline-pushup': 'real/push-up.webm',
+      'diamond-pushup': 'real/push-up.webm',
+      'pseudo-planche-pushup': 'real/push-up.webm',
+      'pike-pushup': 'real/push-up.webm',
+      'inverted-row': 'real/pull-up.webm',
+      'pullup-assisted': 'real/pull-up.webm',
+      'chinup-assisted': 'real/pull-up.webm',
+      'archer-row': 'real/pull-up.webm',
+      'bodyweight-curl': 'real/pull-up.webm',
+      'air-squat': 'real/squat-bodyweight.webm',
+      'bulgarian-bodyweight': 'real/squat-bodyweight.webm',
+      'step-up': 'real/squat-bodyweight.webm',
+      'walking-lunge': 'real/squat-bodyweight.webm',
+      'cossack-squat': 'real/squat-bodyweight.webm',
+      'calf-raises-bodyweight': 'real/squat-bodyweight.webm',
+      'calf-raises-single-leg': 'real/squat-bodyweight.webm',
+      'single-leg-hip-thrust': 'real/hip-thrust.webm',
+      'single-leg-rdl-bodyweight': 'real/hip-thrust.webm',
+      'nordic-curl-assist': 'real/hip-thrust.webm',
+      'hollow-hold': 'real/leg-raises.webm',
+      'handstand-hold': 'real/hanging-crunches.webm',
     };
     const assetName = assetMap[exercise?.id];
     return assetName ? `img/exercises/videos/${assetName}` : '';
@@ -2592,6 +3120,28 @@
       'standing-calf-raise': 'calves.svg',
       'seated-calf-raise': 'calves.svg',
       'lateral-raise': 'accessory.svg',
+      'pushups-standard': 'push.svg',
+      'decline-pushup': 'push.svg',
+      'pike-pushup': 'push.svg',
+      'diamond-pushup': 'push.svg',
+      'pseudo-planche-pushup': 'push.svg',
+      'inverted-row': 'pull.svg',
+      'pullup-assisted': 'pull.svg',
+      'chinup-assisted': 'pull.svg',
+      'archer-row': 'pull.svg',
+      'bodyweight-curl': 'pull.svg',
+      'air-squat': 'squat.svg',
+      'bulgarian-bodyweight': 'squat.svg',
+      'step-up': 'squat.svg',
+      'walking-lunge': 'squat.svg',
+      'cossack-squat': 'squat.svg',
+      'calf-raises-bodyweight': 'calves.svg',
+      'calf-raises-single-leg': 'calves.svg',
+      'single-leg-hip-thrust': 'hinge.svg',
+      'single-leg-rdl-bodyweight': 'hinge.svg',
+      'nordic-curl-assist': 'hinge.svg',
+      'hollow-hold': 'accessory.svg',
+      'handstand-hold': 'accessory.svg',
     };
     const assetName = assetMap[exercise?.id] || 'accessory.svg';
     return `img/exercises/${assetName}`;
