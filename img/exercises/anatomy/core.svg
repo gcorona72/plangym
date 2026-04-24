@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 360" role="img" aria-label="Anatomía core">
+  <defs>
+    <linearGradient id="body" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#e2e8f0"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f97316" stop-opacity="0.96"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="360" rx="28" fill="#0f172a"/>
+  <ellipse cx="120" cy="62" rx="28" ry="30" fill="#e2e8f0"/>
+  <path d="M82 97c10 14 26 21 38 21s28-7 38-21l10 16 15 66-25 9-12-43v113H87V145L75 188l-25-9 15-66z" fill="url(#body)"/>
+  <rect x="82" y="146" width="76" height="92" rx="22" fill="url(#accent)"/>
+  <path d="M73 127l-24 11 11 34 20-7z" fill="#cbd5e1"/>
+  <path d="M167 127l24 11-11 34-20-7z" fill="#cbd5e1"/>
+  <path d="M87 260h22v66H87zM131 260h22v66h-22z" fill="#cbd5e1"/>
+  <path d="M81 325h34v12H81zM125 325h34v12h-34z" fill="#94a3b8"/>
+</svg>

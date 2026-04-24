@@ -2,6 +2,12 @@
   const appRoot = document.getElementById('app');
   if (!appRoot) return;
 
+  const muscleWikiService = typeof require === 'function'
+    ? require('./muscleWikiService')
+    : (typeof window !== 'undefined' && window.muscleWikiService) || {
+      searchExerciseMedia: async () => null,
+    };
+
   const STORAGE_KEY = 'plan-comida-state-v1';
   const DB_NAME = 'plan-comida-db';
   const DB_VERSION = 1;
@@ -72,11 +78,82 @@
   };
   const defaultGoals = { calories: 2850, protein: 170, carbs: 355, fats: 90 };
   const defaultExerciseMediaConfig = {
-    provider: 'exercisedb',
+    provider: 'musclewiki',
     enabled: false,
     rapidApiKey: '',
-    rapidApiHost: 'exercisedb.p.rapidapi.com',
-    baseUrl: 'https://exercisedb.p.rapidapi.com',
+    rapidApiHost: 'musclewiki.p.rapidapi.com',
+    baseUrl: 'https://musclewiki.p.rapidapi.com',
+  };
+  const EXERCISE_MEDIA_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 3;
+  const LOCAL_EXERCISE_VIDEO_ALIASES = {
+    't1_1': 'real/bench-press.webm',
+    't1_2': 'real/bent-over-row.webm',
+    't1_3': 'real/incline-press.webm',
+    't1_4': 'real/pull-up.webm',
+    't1_5': 'real/shoulder-press.webm',
+    't1_6': 'real/bent-over-row.webm',
+    'p1_1': 'real/squat.webm',
+    'p1_2': 'real/deadlift.webm',
+    'p1_3': 'real/squat.webm',
+    'p1_4': 'real/deadlift.webm',
+    'p1_5': 'real/squat.webm',
+    't2_1': 'real/shoulder-press.webm',
+    't2_2': 'real/bent-over-row.webm',
+    't2_3': 'real/bench-press.webm',
+    't2_4': 'real/bent-over-row.webm',
+    't2_5': 'real/bench-press.webm',
+    't2_6': 'real/bent-over-row.webm',
+    'p2_1': 'real/deadlift.webm',
+    'p2_2': 'real/squat.webm',
+    'p2_3': 'real/squat.webm',
+    'p2_4': 'real/deadlift.webm',
+    'p2_5': 'real/squat.webm',
+    'pushups-standard': 'real/push-up.webm',
+    'decline-pushup': 'real/push-up.webm',
+    'diamond-pushup': 'real/push-up.webm',
+    'pseudo-planche-pushup': 'real/push-up.webm',
+    'pike-pushup': 'real/push-up.webm',
+    'inverted-row': 'real/pull-up.webm',
+    'pullup-assisted': 'real/pull-up.webm',
+    'chinup-assisted': 'real/pull-up.webm',
+    'archer-row': 'real/pull-up.webm',
+    'bodyweight-curl': 'real/pull-up.webm',
+    'air-squat': 'real/squat-bodyweight.webm',
+    'bulgarian-bodyweight': 'real/squat-bodyweight.webm',
+    'step-up': 'real/squat-bodyweight.webm',
+    'walking-lunge': 'real/squat-bodyweight.webm',
+    'cossack-squat': 'real/squat-bodyweight.webm',
+    'calf-raises-bodyweight': 'real/squat-bodyweight.webm',
+    'calf-raises-single-leg': 'real/squat-bodyweight.webm',
+    'single-leg-hip-thrust': 'real/hip-thrust.webm',
+    'single-leg-rdl-bodyweight': 'real/hip-thrust.webm',
+    'nordic-curl-assist': 'real/hip-thrust.webm',
+    'hollow-hold': 'real/leg-raises.webm',
+    'handstand-hold': 'real/hanging-crunches.webm',
+  };
+  const MUSCLEWIKI_EXERCISE_NAME_ALIASES = {
+    't1_1': 'Barbell Bench Press',
+    't1_2': 'Barbell Bent Over Row',
+    't1_3': 'Incline Bench Press',
+    't1_4': 'Lat Pulldown',
+    't1_5': 'Lateral Raise',
+    't1_6': 'Alternating Dumbbell Curl',
+    'p1_1': 'Barbell Squat',
+    'p1_2': 'Romanian Deadlift',
+    'p1_3': 'Leg Press',
+    'p1_4': 'Leg Curl Machine',
+    'p1_5': 'Standing Calf Raise',
+    't2_1': 'Barbell Overhead Press',
+    't2_2': 'Seated Cable Row',
+    't2_3': 'Flat Dumbbell Bench Press',
+    't2_4': 'Face Pull',
+    't2_5': 'Tricep Pushdown',
+    't2_6': 'Hammer Curl',
+    'p2_1': 'Deadlift',
+    'p2_2': 'Bulgarian Split Squat',
+    'p2_3': 'Leg Extension',
+    'p2_4': 'Seated Leg Curl',
+    'p2_5': 'Seated Calf Raise',
   };
 
   const defaultState = {
@@ -94,6 +171,8 @@
     recipeDraftOpen: false,
     recipeDraft: createEmptyRecipeDraft(),
     selectedRecipeId: null,
+    selectedNutritionMealId: null,
+    selectedPlanDetailDate: null,
     selectedExerciseVideoId: null,
     routineModalOpen: false,
     selectedRoutineDate: todayKey(),
@@ -501,6 +580,8 @@
     merged.recipeDraftOpen = Boolean(incoming.recipeDraftOpen);
     merged.recipeDraft = incoming.recipeDraft ? { ...createEmptyRecipeDraft(), ...incoming.recipeDraft } : createEmptyRecipeDraft();
     merged.selectedRecipeId = incoming.selectedRecipeId || null;
+    merged.selectedNutritionMealId = incoming.selectedNutritionMealId || null;
+    merged.selectedPlanDetailDate = incoming.selectedPlanDetailDate || null;
     merged.selectedExerciseVideoId = incoming.selectedExerciseVideoId || null;
     merged.routineModalOpen = Boolean(incoming.routineModalOpen);
     merged.selectedRoutineDate = incoming.selectedRoutineDate || merged.activeDate;
@@ -511,15 +592,23 @@
     merged.goals = incoming.goals ? { ...clone(defaultGoals), ...incoming.goals } : clone(defaultGoals);
     merged.nutrition = incoming.nutrition ? { ...createNutritionState(), ...incoming.nutrition, meals: Array.isArray(incoming.nutrition.meals) ? incoming.nutrition.meals : createNutritionState().meals } : createNutritionState();
     const defaultTraining = createTrainingState();
-    merged.training = incoming.training ? {
+    const incomingTraining = incoming.training && typeof incoming.training === 'object' ? incoming.training : null;
+    merged.training = incomingTraining ? {
       ...defaultTraining,
-      ...incoming.training,
-      programs: normalizeTrainingPrograms(incoming.training.programs, incoming.training.days || defaultTraining.days),
-      days: Array.isArray(incoming.training.days) ? incoming.training.days : defaultTraining.days,
-      logsByDate: incoming.training.logsByDate && typeof incoming.training.logsByDate === 'object' ? incoming.training.logsByDate : defaultTraining.logsByDate,
-      exerciseTargets: sanitizeTrainingTargets(incoming.training.exerciseTargets),
-      mode: normalizeTrainingMode(incoming.training.mode),
+      ...incomingTraining,
+      programs: normalizeTrainingPrograms(incomingTraining.programs, incomingTraining.days || defaultTraining.days),
+      days: Array.isArray(incomingTraining.days) ? incomingTraining.days : defaultTraining.days,
+      logsByDate: incomingTraining.logsByDate && typeof incomingTraining.logsByDate === 'object' ? incomingTraining.logsByDate : defaultTraining.logsByDate,
+      exerciseTargets: sanitizeTrainingTargets(incomingTraining.exerciseTargets),
+      mode: normalizeTrainingMode(incomingTraining.mode),
     } : defaultTraining;
+    if (incomingTraining && incomingTraining.routineId !== defaultTraining.routineId) {
+      merged.training = {
+        ...defaultTraining,
+        mode: normalizeTrainingMode(incomingTraining.mode),
+        selectedDayId: incomingTraining.selectedDayId || defaultTraining.selectedDayId,
+      };
+    }
     merged.training.days = clone(merged.training.programs?.[merged.training.mode] || merged.training.days || defaultTraining.days);
     if (!merged.training.days.some((day) => day.id === merged.training.selectedDayId)) {
       merged.training.selectedDayId = merged.training.days[0]?.id || 'day1';
@@ -563,6 +652,8 @@
     if (tabTarget) {
       state.tab = tabTarget.dataset.tab;
       state.selectedRecipeId = null;
+      state.selectedNutritionMealId = null;
+      state.selectedPlanDetailDate = null;
       render();
       queueSave();
       return;
@@ -753,6 +844,26 @@
       case 'close-recipe-detail':
         state.selectedRecipeId = null;
         render();
+        break;
+      case 'open-plan-day-detail':
+        state.selectedPlanDetailDate = actionTarget.dataset.date || state.activeDate;
+        render();
+        queueSave();
+        break;
+      case 'close-plan-day-detail':
+        state.selectedPlanDetailDate = null;
+        render();
+        queueSave();
+        break;
+      case 'open-nutrition-meal-detail':
+        state.selectedNutritionMealId = actionTarget.dataset.mealId || null;
+        render();
+        queueSave();
+        break;
+      case 'close-nutrition-detail':
+        state.selectedNutritionMealId = null;
+        render();
+        queueSave();
         break;
       case 'export-data':
         exportState();
@@ -955,7 +1066,7 @@
     state.profile = nextProfile;
     syncGoalsFromProfile();
     ensureTodayPlan(true);
-    state.status = { text: exerciseMediaEnabled ? 'Ajustes guardados. ExerciseDB queda como respaldo remoto para cuando falte un vídeo local.' : 'Ajustes guardados. Los vídeos locales en bucle seguirán siendo la opción principal.', type: 'success' };
+    state.status = { text: exerciseMediaEnabled ? 'Ajustes guardados. MuscleWiki quedará como fuente dinámica de animaciones e instrucciones.' : 'Ajustes guardados. La app seguirá mostrando el placeholder local hasta que configures MuscleWiki.', type: 'success' };
     queueSave();
     render();
   }
@@ -1261,9 +1372,14 @@
   function createTrainingState() {
     const programs = buildTrainingPrograms();
     return {
+      routineId: programs.routineId,
+      routineName: programs.routineName,
       selectedDayId: 'day1',
       days: clone(programs.gym),
-      programs,
+      programs: {
+        gym: clone(programs.gym),
+        calisthenia: clone(programs.calisthenia),
+      },
       logsByDate: seedTrainingLogs(programs.gym),
       exerciseTargets: {},
       mode: 'gym',
@@ -1271,73 +1387,131 @@
     };
   }
 
-  function buildTrainingPrograms() {
+  function mergeTrainingExercise(baseExercise = {}, nextExercise = {}) {
+    const mergedExercise = {
+      ...clone(baseExercise),
+      ...nextExercise,
+    };
     return {
-      gym: [
-      {
-        id: 'day1',
-        name: 'Torso',
-        focus: 'Fuerza / Hipertrofia',
-        badge: 'Día 1',
-        exercises: [
-          { id: 'bench-barbell', name: 'Press de Banca con Barra', series: 4, repRange: '6-8' },
-          { id: 'barbell-row', name: 'Remo con Barra o Pendlay', series: 4, repRange: '6-8' },
-          { id: 'incline-db-press', name: 'Press Inclinado con Mancuernas', series: 3, repRange: '8-10' },
-          { id: 'lat-pulldown', name: 'Jalón al pecho o Dominadas', series: 3, repRange: '8-10' },
-          { id: 'lateral-raise', name: 'Elevaciones laterales para hombro', series: 3, repRange: '12-15' },
-          { id: 'alt-biceps-curl', name: 'Curl de Bíceps alterno', series: 3, repRange: '10-12' },
-        ],
-      },
-      {
-        id: 'day2',
-        name: 'Pierna',
-        focus: 'Cuádriceps',
-        badge: 'Día 2',
-        exercises: [
-          { id: 'back-squat', name: 'Sentadilla Libre con Barra', series: 4, repRange: '6-8' },
-          { id: 'romanian-deadlift', name: 'Peso Muerto Rumano', series: 4, repRange: '8-10' },
-          { id: 'leg-press', name: 'Prensa de Piernas', series: 3, repRange: '10-12' },
-          { id: 'lying-leg-curl', name: 'Curl de Isquios en máquina', series: 3, repRange: '12-15' },
-          { id: 'standing-calf-raise', name: 'Gemelos de pie', series: 4, repRange: '12-15' },
-        ],
-      },
-      {
-        id: 'day3',
-        name: 'Descanso',
-        focus: 'Recuperación',
-        badge: 'Día 3',
-        restDay: true,
-        message: 'Recuperación Activa',
-        exercises: [],
-      },
-      {
-        id: 'day4',
-        name: 'Torso',
-        focus: 'Hipertrofia',
-        badge: 'Día 4',
-        exercises: [
-          { id: 'shoulder-press', name: 'Press Militar con Mancuernas o Barra', series: 4, repRange: '8-10' },
-          { id: 'low-pulley-row', name: 'Remo en Polea Baja', series: 4, repRange: '10-12' },
-          { id: 'flat-db-press', name: 'Press de Banca Plano con Mancuernas', series: 3, repRange: '10-12' },
-          { id: 'facepull', name: 'Remo al cuello o Facepull', series: 3, repRange: '12-15' },
-          { id: 'triceps-pushdown', name: 'Extensión de Tríceps en polea', series: 3, repRange: '10-12' },
-          { id: 'hammer-curl', name: 'Curl de Bíceps Martillo', series: 3, repRange: '10-12' },
-        ],
-      },
-      {
-        id: 'day5',
-        name: 'Pierna',
-        focus: 'Cadera / Isquios',
-        badge: 'Día 5',
-        exercises: [
-          { id: 'conventional-deadlift', name: 'Peso Muerto Convencional o Hip Thrust', series: 4, repRange: '6-8' },
-          { id: 'bulgarian-split-squat', name: 'Sentadilla Búlgara con mancuernas', series: 3, repRange: '8-10 por pierna' },
-          { id: 'leg-extension', name: 'Extensiones de Cuádriceps en máquina', series: 3, repRange: '12-15' },
-          { id: 'seated-leg-curl', name: 'Curl de Isquios sentado', series: 3, repRange: '10-12' },
-          { id: 'seated-calf-raise', name: 'Gemelos sentado', series: 4, repRange: '15-20' },
-        ],
-      },
+      ...mergedExercise,
+      name: String(mergedExercise.name || mergedExercise.nombre || '').trim(),
+      repRange: String(mergedExercise.repRange || mergedExercise.reps || '').trim(),
+      animacion_url: resolveExerciseCanonicalAnimationUrl(mergedExercise),
+      muscleZone: resolveExerciseMuscleZone(mergedExercise),
+    };
+  }
+
+  function mergeTrainingDay(baseDay = {}, nextDay = {}) {
+    const baseExercises = Array.isArray(baseDay.exercises) ? baseDay.exercises : [];
+    const nextExercises = Array.isArray(nextDay.exercises) ? nextDay.exercises : [];
+    const nextExerciseById = new Map(nextExercises.map((exercise) => [exercise?.id, exercise]));
+    const mergedExercises = baseExercises.map((exercise) => mergeTrainingExercise(exercise, nextExerciseById.get(exercise.id)));
+    const extraExercises = nextExercises.filter((exercise) => exercise && !baseExercises.some((baseExercise) => baseExercise.id === exercise.id)).map((exercise) => ({ ...exercise }));
+
+    return {
+      ...clone(baseDay),
+      ...nextDay,
+      exercises: [...mergedExercises, ...extraExercises],
+    };
+  }
+
+  function mergeTrainingDays(baseDays = [], nextDays = []) {
+    const nextDayById = new Map((Array.isArray(nextDays) ? nextDays : []).map((day) => [day?.id, day]));
+    const mergedDays = (Array.isArray(baseDays) ? baseDays : []).map((day) => mergeTrainingDay(day, nextDayById.get(day.id)));
+    const extraDays = (Array.isArray(nextDays) ? nextDays : []).filter((day) => day && !baseDays.some((baseDay) => baseDay.id === day.id)).map((day) => clone(day));
+    return [...mergedDays, ...extraDays];
+  }
+
+  function buildTrainingPrograms() {
+    const gymSeed = {
+      rutina_id: 'hipertrofia_torso_pierna_4dias',
+      nombre: 'Torso/Pierna para Ectomorfos',
+      dias: [
+        {
+          dia_semana: 'Lunes',
+          tipo: 'Torso 1',
+          enfoque: 'Fuerza/Hipertrofia',
+          ejercicios: [
+            { id: 't1_1', nombre: 'Barbell Bench Press', series: 4, reps: '6-8', descanso_seg: 120, animacion_url: '/assets/ejercicios/press_banca_barra.gif' },
+            { id: 't1_2', nombre: 'Barbell Row', series: 4, reps: '6-8', descanso_seg: 120, animacion_url: '/assets/ejercicios/remo_barra.gif' },
+            { id: 't1_3', nombre: 'Incline Dumbbell Press', series: 3, reps: '8-10', descanso_seg: 90, animacion_url: '/assets/ejercicios/press_inclinado_mancuerna.gif' },
+            { id: 't1_4', nombre: 'Lat Pulldown', series: 3, reps: '8-10', descanso_seg: 90, animacion_url: '/assets/ejercicios/jalon_pecho.gif' },
+            { id: 't1_5', nombre: 'Lateral Raise', series: 3, reps: '12-15', descanso_seg: 90, animacion_url: '/assets/ejercicios/elevaciones_laterales.gif' },
+            { id: 't1_6', nombre: 'Alternating Dumbbell Curl', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/curl_biceps_alterno.gif' },
+          ],
+        },
+        {
+          dia_semana: 'Martes',
+          tipo: 'Pierna 1',
+          enfoque: 'Cuádriceps Dominante',
+          ejercicios: [
+            { id: 'p1_1', nombre: 'Barbell Squat', series: 4, reps: '6-8', descanso_seg: 120, animacion_url: '/assets/ejercicios/sentadilla_barra.gif' },
+            { id: 'p1_2', nombre: 'Romanian Deadlift', series: 4, reps: '8-10', descanso_seg: 120, animacion_url: '/assets/ejercicios/peso_muerto_rumano.gif' },
+            { id: 'p1_3', nombre: 'Leg Press', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/prensa_piernas.gif' },
+            { id: 'p1_4', nombre: 'Leg Curl Machine', series: 3, reps: '12-15', descanso_seg: 90, animacion_url: '/assets/ejercicios/curl_isquios.gif' },
+            { id: 'p1_5', nombre: 'Standing Calf Raise', series: 4, reps: '12-15', descanso_seg: 90, animacion_url: '/assets/ejercicios/gemelos_pie.gif' },
+          ],
+        },
+        {
+          dia_semana: 'Miércoles',
+          tipo: 'Descanso',
+          enfoque: 'Recuperación Activa',
+          ejercicios: [],
+        },
+        {
+          dia_semana: 'Jueves',
+          tipo: 'Torso 2',
+          enfoque: 'Hipertrofia',
+          ejercicios: [
+            { id: 't2_1', nombre: 'Barbell Overhead Press', series: 4, reps: '8-10', descanso_seg: 120, animacion_url: '/assets/ejercicios/press_militar.gif' },
+            { id: 't2_2', nombre: 'Seated Cable Row', series: 4, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/remo_polea_baja.gif' },
+            { id: 't2_3', nombre: 'Flat Dumbbell Bench Press', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/press_plano_mancuerna.gif' },
+            { id: 't2_4', nombre: 'Face Pull', series: 3, reps: '12-15', descanso_seg: 90, animacion_url: '/assets/ejercicios/facepull.gif' },
+            { id: 't2_5', nombre: 'Tricep Pushdown', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/extension_triceps_polea.gif' },
+            { id: 't2_6', nombre: 'Hammer Curl', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/curl_martillo.gif' },
+          ],
+        },
+        {
+          dia_semana: 'Viernes',
+          tipo: 'Pierna 2',
+          enfoque: 'Cadera/Isquios Dominante',
+          ejercicios: [
+            { id: 'p2_1', nombre: 'Deadlift', series: 4, reps: '6-8', descanso_seg: 120, animacion_url: '/assets/ejercicios/hip_thrust.gif' },
+            { id: 'p2_2', nombre: 'Bulgarian Split Squat', series: 3, reps: '8-10', descanso_seg: 90, animacion_url: '/assets/ejercicios/sentadilla_bulgara.gif' },
+            { id: 'p2_3', nombre: 'Leg Extension', series: 3, reps: '12-15', descanso_seg: 90, animacion_url: '/assets/ejercicios/extension_cuadriceps.gif' },
+            { id: 'p2_4', nombre: 'Seated Leg Curl', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/curl_isquios_sentado.gif' },
+            { id: 'p2_5', nombre: 'Seated Calf Raise', series: 4, reps: '15-20', descanso_seg: 90, animacion_url: '/assets/ejercicios/gemelos_sentado.gif' },
+          ],
+        },
+        {
+          dia_semana: 'Sábado y Domingo',
+          tipo: 'Descanso',
+          enfoque: 'Recuperación Completa',
+          ejercicios: [],
+        },
       ],
+    };
+
+    return {
+      routineId: gymSeed.rutina_id,
+      routineName: gymSeed.nombre,
+      gym: gymSeed.dias.map((day, index) => ({
+        id: `day${index + 1}`,
+        name: day.tipo,
+        focus: day.enfoque,
+        badge: `Día ${index + 1}`,
+        restDay: day.ejercicios.length === 0,
+        message: day.ejercicios.length === 0 ? day.enfoque : null,
+        exercises: day.ejercicios.map((exercise) => ({
+          id: exercise.id,
+          name: exercise.nombre,
+          series: exercise.series,
+          repRange: exercise.reps,
+          descanso_seg: exercise.descanso_seg,
+          animacion_url: resolveExerciseCanonicalAnimationUrl(exercise),
+          muscleZone: resolveExerciseMuscleZone(exercise),
+        })),
+      })),
       calisthenia: [
         {
           id: 'day1',
@@ -1345,12 +1519,12 @@
           focus: 'Empuje / Tirón',
           badge: 'Día 1',
           exercises: [
-            { id: 'pushups-standard', name: 'Flexiones estándar', series: 4, repRange: '8-15' },
-            { id: 'inverted-row', name: 'Remo invertido en barra baja', series: 4, repRange: '8-12' },
-            { id: 'decline-pushup', name: 'Flexiones declinadas', series: 3, repRange: '8-12' },
-            { id: 'pullup-assisted', name: 'Dominadas asistidas o negativas', series: 3, repRange: '5-8' },
-            { id: 'pike-pushup', name: 'Pike push-up', series: 3, repRange: '6-10' },
-            { id: 'hollow-hold', name: 'Hollow hold', series: 3, repRange: '20-40 s' },
+            { id: 'pushups-standard', name: 'Push Up', series: 4, repRange: '8-15', muscleZone: resolveExerciseMuscleZone({ id: 'pushups-standard', name: 'Push Up' }) },
+            { id: 'inverted-row', name: 'Inverted Row', series: 4, repRange: '8-12', muscleZone: resolveExerciseMuscleZone({ id: 'inverted-row', name: 'Inverted Row' }) },
+            { id: 'decline-pushup', name: 'Decline Push Up', series: 3, repRange: '8-12', muscleZone: resolveExerciseMuscleZone({ id: 'decline-pushup', name: 'Decline Push Up' }) },
+            { id: 'pullup-assisted', name: 'Assisted Pull Up', series: 3, repRange: '5-8', muscleZone: resolveExerciseMuscleZone({ id: 'pullup-assisted', name: 'Assisted Pull Up' }) },
+            { id: 'pike-pushup', name: 'Pike Push Up', series: 3, repRange: '6-10', muscleZone: resolveExerciseMuscleZone({ id: 'pike-pushup', name: 'Pike Push Up' }) },
+            { id: 'hollow-hold', name: 'Hollow Hold', series: 3, repRange: '20-40 s', muscleZone: resolveExerciseMuscleZone({ id: 'hollow-hold', name: 'Hollow Hold' }) },
           ],
         },
         {
@@ -1359,11 +1533,11 @@
           focus: 'Cuádriceps / Control',
           badge: 'Día 2',
           exercises: [
-            { id: 'air-squat', name: 'Sentadilla aire', series: 4, repRange: '15-25' },
-            { id: 'bulgarian-bodyweight', name: 'Sentadilla búlgara a peso corporal', series: 3, repRange: '10-15 por pierna' },
-            { id: 'step-up', name: 'Step-up en banco', series: 3, repRange: '10-12 por pierna' },
-            { id: 'single-leg-hip-thrust', name: 'Hip thrust a una pierna', series: 3, repRange: '10-15 por pierna' },
-            { id: 'calf-raises-bodyweight', name: 'Elevaciones de gemelos', series: 4, repRange: '20-30' },
+            { id: 'air-squat', name: 'Bodyweight Squat', series: 4, repRange: '15-25', muscleZone: resolveExerciseMuscleZone({ id: 'air-squat', name: 'Bodyweight Squat' }) },
+            { id: 'bulgarian-bodyweight', name: 'Bodyweight Bulgarian Split Squat', series: 3, repRange: '10-15 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'bulgarian-bodyweight', name: 'Bodyweight Bulgarian Split Squat' }) },
+            { id: 'step-up', name: 'Step Up', series: 3, repRange: '10-12 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'step-up', name: 'Step Up' }) },
+            { id: 'single-leg-hip-thrust', name: 'Single-Leg Hip Thrust', series: 3, repRange: '10-15 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'single-leg-hip-thrust', name: 'Single-Leg Hip Thrust' }) },
+            { id: 'calf-raises-bodyweight', name: 'Bodyweight Calf Raise', series: 4, repRange: '20-30', muscleZone: resolveExerciseMuscleZone({ id: 'calf-raises-bodyweight', name: 'Bodyweight Calf Raise' }) },
           ],
         },
         {
@@ -1381,12 +1555,12 @@
           focus: 'Volumen / Estabilidad',
           badge: 'Día 4',
           exercises: [
-            { id: 'diamond-pushup', name: 'Flexiones diamante', series: 4, repRange: '8-12' },
-            { id: 'chinup-assisted', name: 'Dominadas supinas asistidas', series: 4, repRange: '5-8' },
-            { id: 'pseudo-planche-pushup', name: 'Flexiones pseudo planche', series: 3, repRange: '6-10' },
-            { id: 'archer-row', name: 'Remo arquero en barra baja', series: 3, repRange: '8-10 por lado' },
-            { id: 'handstand-hold', name: 'Aguante de handstand en pared', series: 3, repRange: '20-30 s' },
-            { id: 'bodyweight-curl', name: 'Curl de bíceps isométrico con toalla', series: 3, repRange: '20-30 s' },
+            { id: 'diamond-pushup', name: 'Diamond Push Up', series: 4, repRange: '8-12', muscleZone: resolveExerciseMuscleZone({ id: 'diamond-pushup', name: 'Diamond Push Up' }) },
+            { id: 'chinup-assisted', name: 'Chin Up', series: 4, repRange: '5-8', muscleZone: resolveExerciseMuscleZone({ id: 'chinup-assisted', name: 'Chin Up' }) },
+            { id: 'pseudo-planche-pushup', name: 'Pseudo Planche Push Up', series: 3, repRange: '6-10', muscleZone: resolveExerciseMuscleZone({ id: 'pseudo-planche-pushup', name: 'Pseudo Planche Push Up' }) },
+            { id: 'archer-row', name: 'Archer Row', series: 3, repRange: '8-10 por lado', muscleZone: resolveExerciseMuscleZone({ id: 'archer-row', name: 'Archer Row' }) },
+            { id: 'handstand-hold', name: 'Handstand Hold', series: 3, repRange: '20-30 s', muscleZone: resolveExerciseMuscleZone({ id: 'handstand-hold', name: 'Handstand Hold' }) },
+            { id: 'bodyweight-curl', name: 'Isometric Towel Curl', series: 3, repRange: '20-30 s', muscleZone: resolveExerciseMuscleZone({ id: 'bodyweight-curl', name: 'Isometric Towel Curl' }) },
           ],
         },
         {
@@ -1395,11 +1569,11 @@
           focus: 'Posterior / Core',
           badge: 'Día 5',
           exercises: [
-            { id: 'single-leg-rdl-bodyweight', name: 'Peso muerto rumano a una pierna', series: 4, repRange: '10-12 por pierna' },
-            { id: 'nordic-curl-assist', name: 'Nordic curl asistido', series: 3, repRange: '5-8' },
-            { id: 'walking-lunge', name: 'Zancadas caminando', series: 3, repRange: '12-20 por pierna' },
-            { id: 'cossack-squat', name: 'Sentadilla Cossack', series: 3, repRange: '8-10 por lado' },
-            { id: 'calf-raises-single-leg', name: 'Gemelos a una pierna', series: 4, repRange: '15-25 por pierna' },
+            { id: 'single-leg-rdl-bodyweight', name: 'Single-Leg Romanian Deadlift', series: 4, repRange: '10-12 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'single-leg-rdl-bodyweight', name: 'Single-Leg Romanian Deadlift' }) },
+            { id: 'nordic-curl-assist', name: 'Assisted Nordic Curl', series: 3, repRange: '5-8', muscleZone: resolveExerciseMuscleZone({ id: 'nordic-curl-assist', name: 'Assisted Nordic Curl' }) },
+            { id: 'walking-lunge', name: 'Walking Lunge', series: 3, repRange: '12-20 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'walking-lunge', name: 'Walking Lunge' }) },
+            { id: 'cossack-squat', name: 'Cossack Squat', series: 3, repRange: '8-10 por lado', muscleZone: resolveExerciseMuscleZone({ id: 'cossack-squat', name: 'Cossack Squat' }) },
+            { id: 'calf-raises-single-leg', name: 'Single-Leg Calf Raise', series: 4, repRange: '15-25 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'calf-raises-single-leg', name: 'Single-Leg Calf Raise' }) },
           ],
         },
       ],
@@ -1409,8 +1583,8 @@
   function normalizeTrainingPrograms(programs, fallbackGymDays = []) {
     const defaults = buildTrainingPrograms();
     const incoming = programs && typeof programs === 'object' ? programs : {};
-    const gym = Array.isArray(incoming.gym) ? incoming.gym : (Array.isArray(fallbackGymDays) && fallbackGymDays.length ? fallbackGymDays : defaults.gym);
-    const calisthenia = Array.isArray(incoming.calisthenia) ? incoming.calisthenia : defaults.calisthenia;
+    const gym = mergeTrainingDays(Array.isArray(fallbackGymDays) && fallbackGymDays.length ? fallbackGymDays : defaults.gym, Array.isArray(incoming.gym) ? incoming.gym : []);
+    const calisthenia = mergeTrainingDays(defaults.calisthenia, Array.isArray(incoming.calisthenia) ? incoming.calisthenia : []);
     return {
       gym: clone(gym),
       calisthenia: clone(calisthenia),
@@ -1591,6 +1765,8 @@
         </main>
 
         ${renderRecipeDetailModal()}
+        ${renderPlanDayDetailModal()}
+        ${renderNutritionMealDetailModal()}
         ${renderExerciseVideoModal()}
         ${renderOnboardingModal()}
         ${renderRecipeCreatorModal()}
@@ -1704,6 +1880,7 @@
         <article class="glass-panel snapshot-card snapshot-card--calendar">
           <h3 class="section-title">Atajos</h3>
           <div class="action-stack">
+            <button class="btn btn--secondary" data-action="open-plan-day-detail" data-date="${selectedDate}">Ver detalle del día</button>
             <button class="btn btn--ghost" data-action="open-recipes">Explorar recetas</button>
             <button class="btn btn--ghost" data-action="generate-shopping">Ver lista de compra</button>
             <button class="btn btn--ghost" data-action="open-settings">Revisar ajustes</button>
@@ -1730,10 +1907,13 @@
               <h3>${formatDateLabel(selectedDate)}</h3>
               <p class="muted">Revisa las comidas del día y marca si has cumplido los objetivos.</p>
             </div>
-            <label class="check-item check-item--pill">
-              <input type="checkbox" data-action="toggle-day-objective" data-date="${selectedDate}" ${objectiveCompleted ? 'checked' : ''}>
-              <span>Objetivos cumplidos</span>
-            </label>
+            <div class="inline-actions inline-actions--wrap">
+              <button class="btn btn--ghost btn--small" type="button" data-action="open-plan-day-detail" data-date="${selectedDate}">Ver detalle</button>
+              <label class="check-item check-item--pill">
+                <input type="checkbox" data-action="toggle-day-objective" data-date="${selectedDate}" ${objectiveCompleted ? 'checked' : ''}>
+                <span>Objetivos cumplidos</span>
+              </label>
+            </div>
           </div>
           <div class="summary-cards">
             ${renderMetricCard('Kcal del día', `${selectedTotals.calories} kcal`, `Semana: ${weekTotals.calories.toLocaleString('es-ES')} kcal`)}
@@ -1759,7 +1939,7 @@
           <div class="meal-grid">${dayMeals}</div>
         </article>
         <article class="glass-panel section-panel">
-          <div class="section-heading"><div><p class="eyebrow">Rutina</p><h3>${training.badge}</h3></div><button class="btn btn--secondary btn--small" data-action="open-training-routine" data-date="${selectedDate}">Ver</button></div>
+          <div class="section-heading"><div><p class="eyebrow">Rutina</p><h3>${training.badge}</h3></div><div class="inline-actions"><button class="btn btn--ghost btn--small" data-action="open-plan-day-detail" data-date="${selectedDate}">Ver día</button><button class="btn btn--secondary btn--small" data-action="open-training-routine" data-date="${selectedDate}">Ver</button></div></div>
           <p class="muted">${training.restDay ? training.message : `${training.name} · ${training.focus}`}</p>
           <button class="btn btn--primary" type="button" data-action="toggle-day-objective" data-date="${selectedDate}">${objectiveCompleted ? 'Desmarcar objetivos cumplidos' : 'Marcar objetivos cumplidos'}</button>
         </article>
@@ -1801,12 +1981,15 @@
     const totals = getDailyTotals(plan);
     const objectiveCompleted = Boolean(plan.objectivesCompleted);
     return `
-      <button class="glass-panel month-day ${isActive ? 'is-active' : ''} ${objectiveCompleted ? 'is-done' : ''}" type="button" data-action="select-week-day" data-date="${date}">
-        <strong>${new Intl.DateTimeFormat('es-ES', { day: '2-digit' }).format(new Date(`${date}T12:00:00`))}</strong>
-        <span>${totals.calories} kcal</span>
-        <small>${totals.protein} g proteína</small>
-        <small>${objectiveCompleted ? 'Objetivos cumplidos' : 'Pendiente'}</small>
-      </button>
+      <article class="glass-panel month-day ${isActive ? 'is-active' : ''} ${objectiveCompleted ? 'is-done' : ''}">
+        <button class="month-day__main" type="button" data-action="select-week-day" data-date="${date}">
+          <strong>${new Intl.DateTimeFormat('es-ES', { day: '2-digit' }).format(new Date(`${date}T12:00:00`))}</strong>
+          <span>${totals.calories} kcal</span>
+          <small>${totals.protein} g proteína</small>
+          <small>${objectiveCompleted ? 'Objetivos cumplidos' : 'Pendiente'}</small>
+        </button>
+        <button class="btn btn--ghost btn--small month-day__detail" type="button" data-action="open-plan-day-detail" data-date="${date}">Ver día</button>
+      </article>
     `;
   }
 
@@ -1844,6 +2027,7 @@
         <button class="btn btn--ghost btn--small routine-block__summary routine-block__summary--button" type="button" data-action="open-training-routine" data-date="${date}">
           Rutina de hoy
         </button>
+        <button class="btn btn--ghost btn--small routine-block__summary routine-block__summary--button" type="button" data-action="open-plan-day-detail" data-date="${date}">Ver comidas del día</button>
         <p class="day-card__note">La rutina completa se abre en la ventana grande.</p>
       </div>
     `;
@@ -1869,7 +2053,7 @@
     `;
   }
 
-  function renderWeekMealBlock(date, slot, meal, isActive) {
+    function renderWeekMealBlock(date, slot, meal, isActive) {
     const recipe = getRecipeById(meal?.selectedRecipeId);
     if (!recipe) {
       return `<article class="meal-block empty-state">Sin receta disponible.</article>`;
@@ -1889,33 +2073,18 @@
         </summary>
 
         <div class="meal-block__body">
-          <div class="meal-block__alternatives">
-            ${options.map((option) => `<button class="chip chip--filter ${option.id === recipe.id ? 'is-active' : ''}" type="button" data-action="swap-week-meal" data-date="${date}" data-slot="${slot}" data-option-id="${option.id}">${escapeHtml(option.name)}</button>`).join('')}
-          </div>
-
-          <div class="meal-block__content">
-            <div>
-              <h5>Ingredientes</h5>
-              <ul class="ingredients-list">
-                ${recipe.ingredients.map((ingredient) => `<li><strong>${escapeHtml(ingredient.name)}</strong><span>${escapeHtml(ingredient.amount)}</span></li>`).join('')}
-              </ul>
-            </div>
-            <div>
-              <h5>Preparación</h5>
-              <ol class="steps-list">
-                ${recipe.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
-              </ol>
-            </div>
-          </div>
-
           <div class="meal-block__links">
             <button class="btn btn--secondary btn--small" type="button" data-recipe-id="${recipe.id}">Ver detalle</button>
             <a class="btn btn--ghost btn--small" href="${getRecipeVideoUrl(recipe)}" target="_blank" rel="noopener noreferrer">YouTube</a>
           </div>
+
+          <div class="meal-block__alternatives">
+            ${options.map((option) => `<button class="chip chip--filter ${option.id === recipe.id ? 'is-active' : ''}" type="button" data-action="swap-week-meal" data-date="${date}" data-slot="${slot}" data-option-id="${option.id}">${escapeHtml(option.name)}</button>`).join('')}
+          </div>
         </div>
       </details>
     `;
-  }
+    }
 
   function setWeekMealOption(date, slot, recipeId) {
     if (!date || !slot || !recipeId) return;
@@ -2090,9 +2259,13 @@
         <div class="section-heading">
           <div>
             <p class="eyebrow">${escapeHtml(meal.nombre)}</p>
-            <h3>${escapeHtml(meal.alimentos)}</h3>
+            <h3>${escapeHtml(meal.kcal)} kcal</h3>
+            <p class="meal-card__summary">${escapeHtml(meal.alimentos)}</p>
           </div>
-          <button class="btn btn--${meal.consumed ? 'secondary' : 'primary'} btn--small" data-action="toggle-nutrition-meal" data-meal-id="${meal.id}">${meal.consumed ? 'Consumido' : 'Marcar consumido'}</button>
+          <div class="meal-card__actions">
+            <button class="btn btn--ghost btn--small" data-action="open-nutrition-meal-detail" data-meal-id="${meal.id}">Ver detalle</button>
+            <button class="btn btn--${meal.consumed ? 'secondary' : 'primary'} btn--small" data-action="toggle-nutrition-meal" data-meal-id="${meal.id}">${meal.consumed ? 'Consumido' : 'Marcar consumido'}</button>
+          </div>
         </div>
 
         <div class="macro-row macro-row--compact">
@@ -2108,9 +2281,14 @@
           <div class="nutrition-bar"><span>Grasas</span><div class="nutrition-bar__track"><span style="width:${Math.min(100, Math.round((meal.macros.grasa / state.nutrition.target.fats) * 100))}%"></span></div></div>
         </div>
 
-        <p class="muted">${meal.consumed ? `Marcado como consumido${meal.consumedAt ? ` · ${new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(new Date(meal.consumedAt))}` : ''}` : 'Toca el botón para sumar esta comida al progreso del día.'}</p>
+        <p class="muted">${meal.consumed ? `Marcado como consumido${meal.consumedAt ? ` · ${new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(new Date(meal.consumedAt))}` : ''}` : 'Abre el detalle para ver composición y cantidades.'}</p>
       </article>
     `;
+  }
+
+  function getNutritionMealById(mealId) {
+    if (!mealId) return null;
+    return state.nutrition.meals.find((meal) => meal.id === mealId) || null;
   }
 
   function toggleNutritionMeal(mealId) {
@@ -2262,16 +2440,20 @@
     const todaySets = currentLogs?.[exercise.id] || [];
     const weightPlan = getExerciseWeightPlan(exercise.id);
     const progress = getExerciseProgressLabels(exercise.id);
+    const restLabel = exercise.descanso_seg ? ` · ${exercise.descanso_seg} s descanso` : '';
     return `
       <article class="glass-panel exercise-card" data-exercise-id="${exercise.id}">
         <div class="section-heading">
           <div>
             <p class="eyebrow">${escapeHtml(day.name)}</p>
             <h3>${escapeHtml(exercise.name)}</h3>
-            <p class="muted">${exercise.series} series · ${exercise.repRange} reps</p>
+            <p class="muted">${exercise.series} series · ${exercise.repRange} reps${restLabel}</p>
           </div>
           <span class="step-pill">Última sesión</span>
         </div>
+
+        ${renderExerciseAnatomyFrame(exercise, { compact: true })}
+        ${renderExerciseMediaFrame(exercise, { compact: true, allowLoading: false })}
 
         <div class="last-session">
           <strong>${summarizeSession(session, exercise.id)}</strong>
@@ -2472,13 +2654,13 @@
             ${renderSelectField('unit', 'Unidades', { metric: 'Métricas', imperial: 'Imperiales' }, draft.unit, false)}
             <fieldset class="field-group field-group--full">
               <legend>Vídeos de ejercicios</legend>
-              <p class="muted">Los vídeos cortos en bucle son la opción principal. Si un ejercicio no tiene clip local, se intenta ExerciseDB como respaldo remoto.</p>
-              <label class="input-group"><span>RapidAPI key</span><input name="exerciseMediaApiKey" type="password" placeholder="Introduce tu clave" value="${escapeAttr(state.exerciseMediaConfig.rapidApiKey || '')}"></label>
+              <p class="muted">MuscleWiki será la fuente dinámica de animaciones e instrucciones. Mientras la petición se resuelve, verás un skeleton loader elegante.</p>
+              <label class="input-group"><span>MuscleWiki RapidAPI key</span><input name="exerciseMediaApiKey" type="password" placeholder="Introduce tu clave" value="${escapeAttr(state.exerciseMediaConfig.rapidApiKey || '')}"></label>
               <div class="two-column">
-                ${renderTextField('exerciseMediaApiHost', 'RapidAPI host', state.exerciseMediaConfig.rapidApiHost || defaultExerciseMediaConfig.rapidApiHost)}
+                ${renderTextField('exerciseMediaApiHost', 'MuscleWiki RapidAPI host', state.exerciseMediaConfig.rapidApiHost || defaultExerciseMediaConfig.rapidApiHost)}
                 ${renderTextField('exerciseMediaBaseUrl', 'Base URL', state.exerciseMediaConfig.baseUrl || defaultExerciseMediaConfig.baseUrl)}
               </div>
-              <p class="muted">Los clips locales se reproducen en bucle, sin controles, y se cachea el respaldo remoto si se usa ExerciseDB.</p>
+              <p class="muted">Solo se guarda una caché temporal en el cliente; no se descargan ni se re-suben los medios externos.</p>
             </fieldset>
             <fieldset class="field-group field-group--full"><legend>Restricciones</legend><div class="check-grid">${restrictionsCatalog.map((item) => `<label class="check-item"><input type="checkbox" name="restrictions" value="${item.id}" ${draft.restrictions.includes(item.id) ? 'checked' : ''}><span>${item.label}</span></label>`).join('')}</div></fieldset>
             <div class="field-group field-group--full"><label class="input-group"><span>Nota alimentaria</span><textarea name="notes" rows="3" placeholder="Ej. Entreno por la tarde, prefiero comida más densa...">${escapeHtml(draft.notes || '')}</textarea></label></div>
@@ -2542,6 +2724,137 @@
     `;
   }
 
+  function renderPlanDayDetailModal() {
+    if (!state.selectedPlanDetailDate) return '';
+    const date = state.selectedPlanDetailDate;
+    const plan = ensurePlanForDate(date);
+    const totals = getDailyTotals(plan);
+    const training = getTrainingRoutineForDate(date);
+    const objectiveCompleted = Boolean(plan.objectivesCompleted);
+
+    return `
+      <div class="modal-backdrop" data-action="close-plan-day-detail">
+        <section class="glass-panel modal modal--plan-day" role="dialog" aria-modal="true" aria-labelledby="plan-day-detail-title">
+          <header class="detail-hero detail-hero--plan-day" style="background: linear-gradient(155deg, rgba(52, 211, 153, 0.14), rgba(14, 165, 233, 0.1));">
+            <div>
+              <p class="eyebrow">Detalle del día</p>
+              <h2 id="plan-day-detail-title">${formatDateLabel(date)}</h2>
+              <p class="muted">${training.badge} · ${objectiveCompleted ? 'Objetivos cumplidos' : 'Pendiente'} · ${totals.calories} kcal · ${totals.protein} g proteína</p>
+            </div>
+            <button class="btn btn--ghost" type="button" data-action="close-plan-day-detail">Cerrar</button>
+          </header>
+
+          <div class="detail-body detail-body--plan-day">
+            <div class="two-column">
+              <article class="glass-panel section-panel">
+                <h3>Comidas del día</h3>
+                <div class="plan-day-meals">
+                  ${MEAL_ORDER.map((slot) => {
+                    const recipe = getRecipeById(plan.meals[slot]?.selectedRecipeId);
+                    if (!recipe) {
+                      return `<div class="plan-day-meal plan-day-meal--empty"><span class="plan-day-meal__label">${MEAL_LABELS[slot]}</span><strong>Sin receta asignada</strong></div>`;
+                    }
+                    return `
+                      <article class="plan-day-meal">
+                        <div class="plan-day-meal__header">
+                          <div>
+                            <span class="plan-day-meal__label">${MEAL_LABELS[slot]}</span>
+                            <strong>${escapeHtml(recipe.name)}</strong>
+                          </div>
+                          <span class="plan-day-meal__mini">${recipe.calories} kcal</span>
+                        </div>
+                        <div class="plan-day-meal__meta">
+                          <span>${recipe.protein} g proteína</span>
+                          <span>${recipe.prepTime} min</span>
+                        </div>
+                        <div class="plan-day-meal__actions">
+                          <button class="btn btn--secondary btn--small" type="button" data-recipe-id="${recipe.id}">Ver receta</button>
+                          <a class="btn btn--ghost btn--small" href="${getRecipeVideoUrl(recipe)}" target="_blank" rel="noopener noreferrer">Vídeo</a>
+                        </div>
+                      </article>
+                    `;
+                  }).join('')}
+                </div>
+              </article>
+
+              <article class="glass-panel section-panel">
+                <h3>Resumen rápido</h3>
+                <div class="macro-row macro-row--compact macro-row--detail">
+                  <span>${totals.calories} kcal</span>
+                  <span>${totals.protein} g proteína</span>
+                  <span>${totals.carbs} g carbos</span>
+                  <span>${totals.fats} g grasas</span>
+                </div>
+                <div class="action-stack">
+                  <button class="btn btn--primary" type="button" data-action="open-training-routine" data-date="${date}">Ver rutina</button>
+                  <button class="btn btn--ghost" type="button" data-action="toggle-day-objective" data-date="${date}">${objectiveCompleted ? 'Desmarcar objetivos' : 'Marcar objetivos cumplidos'}</button>
+                </div>
+                <p class="muted">Aquí puedes revisar el día sin llenar la vista principal de más texto.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
+  function renderNutritionMealDetailModal() {
+    if (!state.selectedNutritionMealId) return '';
+    const meal = getNutritionMealById(state.selectedNutritionMealId);
+    if (!meal) return '';
+
+    return `
+      <div class="modal-backdrop" data-action="close-nutrition-detail">
+        <section class="glass-panel modal modal--nutrition" role="dialog" aria-modal="true" aria-labelledby="nutrition-detail-title">
+          <header class="detail-hero detail-hero--nutrition" style="background: linear-gradient(155deg, rgba(52, 211, 153, 0.14), rgba(14, 165, 233, 0.1));">
+            <div>
+              <p class="eyebrow">Detalle de comida</p>
+              <h2 id="nutrition-detail-title">${escapeHtml(meal.nombre)}</h2>
+              <p class="muted">${escapeHtml(meal.alimentos)} · ${meal.kcal} kcal</p>
+            </div>
+            <button class="btn btn--ghost" type="button" data-action="close-nutrition-detail">Cerrar</button>
+          </header>
+
+          <div class="detail-body detail-body--nutrition">
+            <div class="two-column">
+              <article class="glass-panel section-panel">
+                <h3>Composición</h3>
+                <p class="muted">${escapeHtml(meal.alimentos)}</p>
+                <p class="muted">${meal.consumed ? `Marcada como consumida${meal.consumedAt ? ` · ${new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(new Date(meal.consumedAt))}` : ''}` : 'Todavía no se ha marcado como consumida.'}</p>
+              </article>
+
+              <article class="glass-panel section-panel">
+                <h3>Macros</h3>
+                <div class="macro-row macro-row--compact macro-row--detail">
+                  <span>${meal.macros.proteina} g proteína</span>
+                  <span>${meal.macros.carbohidratos} g carbos</span>
+                  <span>${meal.macros.grasa} g grasas</span>
+                  <span>${meal.kcal} kcal</span>
+                </div>
+                <p class="muted">Pulsa el botón de consumido para añadirla al progreso del día sin llenar la tarjeta principal de texto.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
+  function renderExerciseAnatomyFrame(exercise, { compact = false } = {}) {
+    if (!exercise) return '';
+    const label = getExerciseMuscleZoneLabel(exercise);
+    const wrapperClass = compact ? 'exercise-anatomy exercise-anatomy--compact' : 'exercise-anatomy';
+    return `
+      <figure class="${wrapperClass}">
+        <img class="exercise-anatomy__image" src="${escapeAttr(getExerciseAnatomyUrl(exercise))}" alt="${escapeAttr(`Zona muscular trabajada: ${label}`)}" loading="lazy" decoding="async">
+        <figcaption class="exercise-anatomy__caption">
+          <span class="eyebrow">Anatomía</span>
+          <strong>${escapeHtml(label)}</strong>
+        </figcaption>
+      </figure>
+    `;
+  }
+
   function renderExerciseVideoModal() {
     if (!state.routineModalOpen) return '';
     const training = getTrainingRoutineForDate(state.selectedRoutineDate || state.activeDate);
@@ -2550,10 +2863,9 @@
     const selectedMedia = selectedExercise ? getExerciseMediaDescriptor(selectedExercise) : { kind: 'empty', src: '' };
     const weightPlan = selectedExercise ? getExerciseWeightPlan(selectedExercise.id) : null;
     const progress = selectedExercise ? getExerciseProgressLabels(selectedExercise.id) : getExerciseProgressLabels(null);
-    const selectedCacheKey = selectedExercise ? getExerciseMediaCacheKey(selectedExercise) : null;
+    const restLabel = selectedExercise?.descanso_seg ? ` · ${selectedExercise.descanso_seg} s descanso` : '';
     const isRemoteConfigured = Boolean(state.exerciseMediaConfig.enabled && state.exerciseMediaConfig.rapidApiKey);
-    const isLoadingMedia = Boolean(selectedCacheKey && state.exerciseMediaRequests[selectedCacheKey]);
-    const cachedEntry = selectedCacheKey ? state.exerciseMediaCache[selectedCacheKey] : null;
+    const cachedEntry = selectedExercise ? state.exerciseMediaCache[getExerciseMediaCacheKey(selectedExercise)] : null;
     const isRemoteMedia = cachedEntry?.kind === 'remote';
     const isRestDay = Boolean(training?.restDay) || exercises.length === 0;
 
@@ -2576,7 +2888,7 @@
               <div class="routine-modal-list__header">
                 <p class="eyebrow">Ejercicios</p>
                 <h3>${isRestDay ? 'Día de recuperación' : `${exercises.length} ejercicios`}</h3>
-                <p class="muted">Toca un ejercicio para ver su vídeo corto en bucle. Si no existe clip local, se usa ExerciseDB como respaldo remoto.</p>
+                <p class="muted">Toca un ejercicio para ver su animación externa. MuscleWiki se consulta en vivo y la app conserva solo una caché temporal en el cliente.</p>
               </div>
 
               ${isRestDay ? `
@@ -2585,10 +2897,10 @@
                   <span>Hoy toca caminar, movilizar y recuperar.</span>
                   <small>No hay ejercicios de fuerza programados para esta fecha.</small>
                 </article>
-              ` : exercises.map((exercise) => `
+                ` : exercises.map((exercise) => `
                 <button class="routine-exercise-card ${exercise.id === selectedExercise?.id ? 'is-active' : ''}" type="button" data-action="open-exercise-video" data-exercise-id="${exercise.id}" data-date="${escapeAttr(state.selectedRoutineDate || state.activeDate)}">
                   <strong>${escapeHtml(exercise.name)}</strong>
-                  <span>${exercise.series} series · ${escapeHtml(exercise.repRange)}</span>
+                  <span>${exercise.series} series · ${escapeHtml(exercise.repRange)}${exercise.descanso_seg ? ` · ${exercise.descanso_seg} s descanso` : ''}</span>
                   <small>Vídeo/animación asociada</small>
                 </button>
               `).join('')}
@@ -2599,7 +2911,7 @@
                 <div>
                   <p class="eyebrow">Vista previa</p>
                   <h3>${selectedExercise ? escapeHtml(selectedExercise.name) : escapeHtml(training?.message || 'Descanso y recuperación')}</h3>
-                  <p class="muted">${selectedExercise ? `${selectedExercise.series} series · ${escapeHtml(selectedExercise.repRange)}` : 'Sin animación asignada en este día.'}</p>
+                    <p class="muted">${selectedExercise ? `${selectedExercise.series} series · ${escapeHtml(selectedExercise.repRange)}${restLabel}` : 'Sin animación asignada en este día.'}</p>
                 </div>
                 ${selectedExercise && selectedMedia.src ? `<a class="btn btn--ghost" href="${selectedMedia.src}" target="_blank" rel="noopener noreferrer">Abrir media</a>` : ''}
               </div>
@@ -2624,31 +2936,16 @@
                   </div>
                 </article>
 
-                ${selectedMedia.kind === 'loading' && isLoadingMedia && !cachedEntry ? `
-                  <div class="exercise-demo-wrap empty-state">
-                    <p class="eyebrow">Cargando vídeo real</p>
-                    <h4>${escapeHtml(selectedExercise.name)}</h4>
-                    <p class="muted">Estamos consultando ExerciseDB para mostrar un respaldo remoto mientras no haya clip local.</p>
-                  </div>
-                ` : `
-                  <div class="exercise-demo-wrap">
-                    ${selectedMedia.kind === 'video' ? `
-                      <video class="exercise-demo" autoplay muted loop playsinline preload="metadata" poster="${escapeAttr(getExerciseLocalFallbackUrl(selectedExercise))}">
-                        <source src="${escapeAttr(selectedMedia.src)}" type="video/webm">
-                      </video>
-                    ` : `
-                      <img class="exercise-demo" src="${escapeAttr(selectedMedia.src)}" alt="${escapeAttr(selectedExercise.name)}" loading="lazy" decoding="async">
-                    `}
-                  </div>
-                `}
+                ${renderExerciseAnatomyFrame(selectedExercise)}
+                ${renderExerciseMediaFrame(selectedExercise)}
                 <div class="detail-body">
                   <article class="glass-panel section-panel">
                     <h4>Notas del ejercicio</h4>
-                    <p class="muted">${escapeHtml(selectedExercise.notes || (selectedMedia.kind === 'video' ? 'Clip local corto en bucle para una reproducción más fluida.' : isRemoteConfigured ? 'Se intentará ExerciseDB como respaldo remoto si falta clip local.' : 'Activa ExerciseDB en ajustes si quieres respaldo remoto adicional.'))}</p>
+                    <p class="muted">${escapeHtml(selectedExercise.notes || (selectedMedia.kind === 'video' ? 'Reproducción directa de la URL externa devuelta por MuscleWiki.' : isRemoteConfigured ? 'Se intentará MuscleWiki como respaldo remoto dinámico.' : 'Activa MuscleWiki en ajustes si quieres animaciones externas.'))}</p>
                   </article>
                   <article class="glass-panel section-panel">
                     <h4>Consejo rápido</h4>
-                    <p class="muted">Mantén la técnica limpia, controla el recorrido y usa el rango de ${progress.unitLabel} como referencia antes de progresar. ${selectedMedia.kind === 'video' ? 'Este clip local se repite en bucle para una experiencia más ligera.' : isRemoteMedia ? 'Este respaldo viene desde ExerciseDB.' : ''}</p>
+                    <p class="muted">Mantén la técnica limpia, controla el recorrido y usa el rango de ${progress.unitLabel} como referencia antes de progresar. ${selectedMedia.kind === 'video' ? 'Esta media externa se reproduce directamente desde la URL devuelta por MuscleWiki.' : isRemoteMedia ? 'Este respaldo viene desde MuscleWiki.' : ''}</p>
                   </article>
                 </div>
               ` : `
@@ -2775,6 +3072,17 @@
     const day = normalized.getDay();
     if (day >= 1 && day <= 5) {
       return state.training.days[day - 1] || state.training.days[0];
+    }
+    if (day === 6 || day === 0) {
+      return state.training.days[5] || {
+        id: day === 6 ? 'recovery-sat' : 'recovery-sun',
+        badge: day === 6 ? 'Sábado' : 'Domingo',
+        name: 'Descanso',
+        focus: 'Recuperación',
+        message: day === 6 ? 'Recuperación activa' : 'Descanso y preparación',
+        restDay: true,
+        exercises: [],
+      };
     }
     return {
       id: day === 6 ? 'recovery-sat' : 'recovery-sun',
@@ -2975,11 +3283,14 @@
 
   function sanitizeExerciseMediaCache(cache) {
     if (!cache || typeof cache !== 'object') return {};
+    const now = Date.now();
     return Object.entries(cache).reduce((acc, [key, value]) => {
       if (!value || typeof value !== 'object' || !value.src) return acc;
+      if (value.updatedAt && (now - Number(value.updatedAt)) > EXERCISE_MEDIA_CACHE_TTL_MS) return acc;
       acc[key] = {
         src: String(value.src),
-        kind: value.kind === 'remote' || value.kind === 'video' ? value.kind : 'local',
+        kind: value.kind === 'remote' || value.kind === 'video' || value.kind === 'image' || value.kind === 'fallback' ? value.kind : 'local',
+        mediaType: value.mediaType === 'image' ? 'image' : value.mediaType === 'video' ? 'video' : null,
         updatedAt: Number(value.updatedAt) || Date.now(),
         label: String(value.label || ''),
       };
@@ -2992,103 +3303,86 @@
   }
 
   function getExerciseMediaQuery(exercise) {
-    const queryMap = {
-      'bench-barbell': 'barbell bench press',
-      'incline-db-press': 'incline dumbbell press',
-      'flat-db-press': 'dumbbell bench press',
-      'shoulder-press': 'shoulder press',
-      'triceps-pushdown': 'triceps pushdown',
-      'barbell-row': 'barbell row',
-      'lat-pulldown': 'lat pulldown',
-      'low-pulley-row': 'seated cable row',
-      'facepull': 'face pull',
-      'alt-biceps-curl': 'biceps curl',
-      'hammer-curl': 'hammer curl',
-      'back-squat': 'barbell squat',
-      'leg-press': 'leg press',
-      'bulgarian-split-squat': 'bulgarian split squat',
-      'leg-extension': 'leg extension',
-      'romanian-deadlift': 'romanian deadlift',
-      'conventional-deadlift': 'deadlift',
-      'seated-leg-curl': 'seated leg curl',
-      'lying-leg-curl': 'lying leg curl',
-      'standing-calf-raise': 'standing calf raise',
-      'seated-calf-raise': 'seated calf raise',
-      'lateral-raise': 'lateral raise',
-      'pushups-standard': 'push up',
-      'inverted-row': 'inverted row',
-      'decline-pushup': 'decline push up',
-      'pullup-assisted': 'assisted pull up',
-      'pike-pushup': 'pike push up',
-      'hollow-hold': 'hollow hold',
-      'air-squat': 'bodyweight squat',
-      'bulgarian-bodyweight': 'bulgarian split squat bodyweight',
-      'step-up': 'step up exercise',
-      'single-leg-hip-thrust': 'single leg hip thrust',
-      'calf-raises-bodyweight': 'calf raise bodyweight',
-      'diamond-pushup': 'diamond push up',
-      'chinup-assisted': 'chin up assisted',
-      'pseudo-planche-pushup': 'pseudo planche push up',
-      'archer-row': 'archer row',
-      'handstand-hold': 'handstand hold',
-      'bodyweight-curl': 'towel biceps curl',
-      'single-leg-rdl-bodyweight': 'single leg romanian deadlift bodyweight',
-      'nordic-curl-assist': 'nordic curl assisted',
-      'walking-lunge': 'walking lunge',
-      'cossack-squat': 'cossack squat',
-      'calf-raises-single-leg': 'single leg calf raise',
-    };
-    return queryMap[exercise?.id] || exercise?.videoQuery || exercise?.name || '';
+    return MUSCLEWIKI_EXERCISE_NAME_ALIASES[exercise?.id] || exercise?.muscleWikiName || exercise?.searchName || exercise?.videoQuery || exercise?.name || '';
+  }
+
+  const EXERCISE_MUSCLE_ZONE_ASSETS = {
+    chest: 'chest.svg',
+    back: 'back.svg',
+    legs: 'legs.svg',
+    shoulders: 'shoulders.svg',
+    arms: 'arms.svg',
+    calves: 'calves.svg',
+    core: 'core.svg',
+  };
+
+  const EXERCISE_MUSCLE_ZONE_LABELS = {
+    chest: 'Pecho',
+    back: 'Espalda',
+    legs: 'Piernas',
+    shoulders: 'Hombros',
+    arms: 'Brazos',
+    calves: 'Gemelos',
+    core: 'Core',
+  };
+
+  function resolveExerciseMuscleZone(exercise = {}) {
+    const explicitZone = String(exercise?.muscleZone || '').trim().toLowerCase();
+    if (explicitZone && EXERCISE_MUSCLE_ZONE_ASSETS[explicitZone]) return explicitZone;
+
+    const haystack = normalize([exercise?.id, exercise?.name, exercise?.nombre, exercise?.muscleWikiName, exercise?.searchName].filter(Boolean).join(' '));
+    if (/(calf|gemel)/.test(haystack)) return 'calves';
+    if (/(curl|tricep|triceps|biceps|hammer)/.test(haystack)) return 'arms';
+    if (/(shoulder|overhead|lateral raise|pike|handstand)/.test(haystack)) return 'shoulders';
+    if (/(bench|press|push up|pushup|decline|diamond|chest|incline)/.test(haystack)) return 'chest';
+    if (/(row|pulldown|pull up|pullup|chin up|inverted|face pull|lat)/.test(haystack)) return 'back';
+    if (/(squat|leg press|leg extension|lunge|step up|bulgarian|deadlift|romanian|hip thrust|nordic|leg curl)/.test(haystack)) return 'legs';
+    if (/(hollow|crunch|plank|core|hold)/.test(haystack)) return 'core';
+    return 'core';
+  }
+
+  function getExerciseMuscleZoneLabel(exercise) {
+    const zone = resolveExerciseMuscleZone(exercise);
+    return EXERCISE_MUSCLE_ZONE_LABELS[zone] || 'Core';
+  }
+
+  function getExerciseAnatomyUrl(exercise) {
+    const zone = resolveExerciseMuscleZone(exercise);
+    const assetName = EXERCISE_MUSCLE_ZONE_ASSETS[zone] || EXERCISE_MUSCLE_ZONE_ASSETS.core;
+    return `img/exercises/anatomy/${assetName}`;
+  }
+
+  function isLegacyExerciseAnimationUrl(mediaUrl) {
+    const normalized = String(mediaUrl || '').trim();
+    if (!normalized) return false;
+    return /\/assets\/ejercicios\//i.test(normalized) || /\.gif(\?|#|$)/i.test(normalized);
+  }
+
+  function getExerciseSeedAnimationUrl(exercise) {
+    return resolveExerciseCanonicalAnimationUrl(exercise);
+  }
+
+  function inferLocalMediaKind(mediaUrl) {
+    const normalized = String(mediaUrl || '').trim().toLowerCase();
+    if (!normalized) return 'image';
+    if (/\.(webm|mp4|mov|ogg)(\?|#|$)/i.test(normalized)) return 'video';
+    return 'image';
+  }
+
+  function getExercisePrimaryLocalMediaUrl(exercise) {
+    return getExerciseSeedAnimationUrl(exercise) || getExerciseLocalVideoUrl(exercise) || getExerciseLocalFallbackUrl(exercise);
+  }
+
+  function resolveExerciseCanonicalAnimationUrl(exercise = {}) {
+    const explicitUrl = String(exercise?.animacion_url || exercise?.animationUrl || exercise?.localAnimationUrl || '').trim();
+    const localVideoUrl = getExerciseLocalVideoUrl(exercise);
+    if (localVideoUrl) return localVideoUrl;
+    if (explicitUrl && !isLegacyExerciseAnimationUrl(explicitUrl)) return explicitUrl;
+    return '';
   }
 
   function getExerciseLocalVideoUrl(exercise) {
-    const assetMap = {
-      'bench-barbell': 'real/bench-press.webm',
-      'flat-db-press': 'real/bench-press.webm',
-      'incline-db-press': 'real/incline-press.webm',
-      'shoulder-press': 'real/shoulder-press.webm',
-      'back-squat': 'real/squat.webm',
-      'leg-press': 'real/squat.webm',
-      'bulgarian-split-squat': 'real/squat.webm',
-      'leg-extension': 'real/squat.webm',
-      'romanian-deadlift': 'real/deadlift.webm',
-      'conventional-deadlift': 'real/deadlift.webm',
-      'seated-leg-curl': 'real/deadlift.webm',
-      'lying-leg-curl': 'real/deadlift.webm',
-      'triceps-pushdown': 'real/bench-press.webm',
-      'barbell-row': 'real/bent-over-row.webm',
-      'lat-pulldown': 'real/bent-over-row.webm',
-      'low-pulley-row': 'real/bent-over-row.webm',
-      'facepull': 'real/bent-over-row.webm',
-      'alt-biceps-curl': 'real/bent-over-row.webm',
-      'hammer-curl': 'real/bent-over-row.webm',
-      'standing-calf-raise': 'real/squat.webm',
-      'seated-calf-raise': 'real/squat.webm',
-      'lateral-raise': 'real/shoulder-press.webm',
-      'pushups-standard': 'real/push-up.webm',
-      'decline-pushup': 'real/push-up.webm',
-      'diamond-pushup': 'real/push-up.webm',
-      'pseudo-planche-pushup': 'real/push-up.webm',
-      'pike-pushup': 'real/push-up.webm',
-      'inverted-row': 'real/pull-up.webm',
-      'pullup-assisted': 'real/pull-up.webm',
-      'chinup-assisted': 'real/pull-up.webm',
-      'archer-row': 'real/pull-up.webm',
-      'bodyweight-curl': 'real/pull-up.webm',
-      'air-squat': 'real/squat-bodyweight.webm',
-      'bulgarian-bodyweight': 'real/squat-bodyweight.webm',
-      'step-up': 'real/squat-bodyweight.webm',
-      'walking-lunge': 'real/squat-bodyweight.webm',
-      'cossack-squat': 'real/squat-bodyweight.webm',
-      'calf-raises-bodyweight': 'real/squat-bodyweight.webm',
-      'calf-raises-single-leg': 'real/squat-bodyweight.webm',
-      'single-leg-hip-thrust': 'real/hip-thrust.webm',
-      'single-leg-rdl-bodyweight': 'real/hip-thrust.webm',
-      'nordic-curl-assist': 'real/hip-thrust.webm',
-      'hollow-hold': 'real/leg-raises.webm',
-      'handstand-hold': 'real/hanging-crunches.webm',
-    };
-    const assetName = assetMap[exercise?.id];
+    const assetName = LOCAL_EXERCISE_VIDEO_ALIASES[exercise?.id];
     return assetName ? `img/exercises/videos/${assetName}` : '';
   }
 
@@ -3099,6 +3393,28 @@
 
   function getExerciseLocalFallbackUrl(exercise) {
     const assetMap = {
+      t1_1: 'push.svg',
+      t1_2: 'pull.svg',
+      t1_3: 'push.svg',
+      t1_4: 'pull.svg',
+      t1_5: 'push.svg',
+      t1_6: 'pull.svg',
+      p1_1: 'squat.svg',
+      p1_2: 'hinge.svg',
+      p1_3: 'squat.svg',
+      p1_4: 'hinge.svg',
+      p1_5: 'calves.svg',
+      t2_1: 'push.svg',
+      t2_2: 'pull.svg',
+      t2_3: 'push.svg',
+      t2_4: 'pull.svg',
+      t2_5: 'push.svg',
+      t2_6: 'pull.svg',
+      p2_1: 'hinge.svg',
+      p2_2: 'squat.svg',
+      p2_3: 'squat.svg',
+      p2_4: 'hinge.svg',
+      p2_5: 'calves.svg',
       'bench-barbell': 'push.svg',
       'incline-db-press': 'push.svg',
       'flat-db-press': 'push.svg',
@@ -3149,30 +3465,36 @@
 
   function getExerciseMediaDescriptor(exercise) {
     const cacheKey = getExerciseMediaCacheKey(exercise);
-    const localVideoUrl = getExerciseLocalVideoUrl(exercise);
-    if (localVideoUrl) {
+    const cached = state.exerciseMediaCache[cacheKey];
+    const seedAnimationUrl = getExerciseSeedAnimationUrl(exercise);
+    const localMediaUrl = getExercisePrimaryLocalMediaUrl(exercise);
+    const ttl = EXERCISE_MEDIA_CACHE_TTL_MS;
+    if (cached && cached.src && (Date.now() - cached.updatedAt) < ttl) {
       return {
-        src: localVideoUrl,
-        kind: 'video',
-        poster: getExerciseLocalFallbackUrl(exercise),
-        label: exercise?.name || '',
+        src: cached.src,
+        kind: cached.mediaType || (cached.kind === 'remote' ? inferLocalMediaKind(cached.src) : cached.kind),
+        poster: seedAnimationUrl || getExerciseLocalFallbackUrl(exercise),
+        fallback: seedAnimationUrl || getExerciseLocalFallbackUrl(exercise),
+        label: cached.label || exercise?.name || '',
       };
     }
-
-    const cached = state.exerciseMediaCache[cacheKey];
-    const ttl = 1000 * 60 * 60 * 24 * 7;
-    if (cached && cached.src && cached.kind === 'remote' && (Date.now() - cached.updatedAt) < ttl) {
-      return cached;
-    }
-    if (cached && cached.src && cached.kind !== 'remote') {
-      return cached;
-    }
     if (state.exerciseMediaConfig.enabled && state.exerciseMediaConfig.rapidApiKey) {
+      if (localMediaUrl) {
+        return {
+          src: localMediaUrl,
+          kind: inferLocalMediaKind(localMediaUrl),
+          poster: getExerciseLocalFallbackUrl(exercise),
+          fallback: getExerciseLocalFallbackUrl(exercise),
+          label: String(exercise?.name || ''),
+        };
+      }
       return { src: '', kind: 'loading', label: String(exercise?.name || '') };
     }
     return {
-      src: getExerciseLocalFallbackUrl(exercise),
-      kind: 'image',
+      src: localMediaUrl,
+      kind: inferLocalMediaKind(localMediaUrl),
+      poster: getExerciseLocalFallbackUrl(exercise),
+      fallback: getExerciseLocalFallbackUrl(exercise),
       label: String(exercise?.name || ''),
     };
   }
@@ -3186,45 +3508,30 @@
     const config = state.exerciseMediaConfig;
     if (!config.enabled || !config.rapidApiKey) return null;
     const cacheKey = getExerciseMediaCacheKey(exercise);
-    if (getExerciseLocalVideoUrl(exercise)) return null;
     const existing = state.exerciseMediaCache[cacheKey];
-    const ttl = 1000 * 60 * 60 * 24 * 7;
+    const ttl = EXERCISE_MEDIA_CACHE_TTL_MS;
     if (existing && existing.kind === 'remote' && (Date.now() - existing.updatedAt) < ttl) {
       return existing;
     }
     if (state.exerciseMediaRequests[cacheKey]) return state.exerciseMediaRequests[cacheKey];
 
     const promise = (async () => {
-      const query = getExerciseMediaQuery(exercise);
-      if (!query) {
-        const fallbackEntry = { src: getExerciseLocalFallbackUrl(exercise), kind: 'fallback', updatedAt: Date.now(), label: String(exercise.name || '') };
+      const result = await muscleWikiService.searchExerciseMedia(getExerciseMediaQuery(exercise), config);
+      if (!result || !result.mediaUrl) {
+        const fallbackSrc = getExercisePrimaryLocalMediaUrl(exercise);
+        const fallbackEntry = { src: fallbackSrc, kind: inferLocalMediaKind(fallbackSrc), updatedAt: Date.now(), label: String(exercise.name || '') };
         state.exerciseMediaCache[cacheKey] = fallbackEntry;
         queueSave();
         return fallbackEntry;
       }
-      const response = await fetch(buildExerciseDbSearchUrl(query), {
-        headers: {
-          'X-RapidAPI-Key': config.rapidApiKey,
-          'X-RapidAPI-Host': config.rapidApiHost || defaultExerciseMediaConfig.rapidApiHost,
-        },
-      });
-      if (!response.ok) throw new Error(`ExerciseDB error: ${response.status}`);
-      const payload = await response.json();
-      const first = Array.isArray(payload) ? payload[0] : payload;
-      const gifUrl = first?.gifUrl || first?.gif_url || first?.gif || first?.image || null;
-      if (!gifUrl) {
-        const fallbackEntry = { src: getExerciseLocalFallbackUrl(exercise), kind: 'fallback', updatedAt: Date.now(), label: String(first?.name || exercise.name || '') };
-        state.exerciseMediaCache[cacheKey] = fallbackEntry;
-        queueSave();
-        return fallbackEntry;
-      }
-      const entry = { src: String(gifUrl), kind: 'remote', updatedAt: Date.now(), label: String(first?.name || exercise.name || '') };
+      const entry = { src: String(result.mediaUrl), kind: 'remote', mediaType: result.mediaType || null, updatedAt: Date.now(), label: String(result.exercise?.name || exercise.name || '') };
       state.exerciseMediaCache[cacheKey] = entry;
       queueSave();
       return entry;
     })().catch((error) => {
-      console.warn('No se pudo cargar ExerciseDB, se usará fallback local.', error);
-      const fallbackEntry = { src: getExerciseLocalFallbackUrl(exercise), kind: 'fallback', updatedAt: Date.now(), label: String(exercise.name || '') };
+      console.warn('No se pudo cargar MuscleWiki, se usará fallback local.', error);
+      const fallbackSrc = getExercisePrimaryLocalMediaUrl(exercise);
+      const fallbackEntry = { src: fallbackSrc, kind: inferLocalMediaKind(fallbackSrc), updatedAt: Date.now(), label: String(exercise.name || '') };
       state.exerciseMediaCache[cacheKey] = fallbackEntry;
       queueSave();
       return fallbackEntry;
@@ -3238,10 +3545,63 @@
 
   function primeExerciseMedia(exercise) {
     if (!exercise) return;
-    if (getExerciseLocalVideoUrl(exercise)) return;
     void requestExerciseMedia(exercise).then((result) => {
       if (result) render();
     });
+  }
+
+  function renderExerciseMediaFrame(exercise, { compact = false, allowLoading = true } = {}) {
+    const selectedMedia = exercise ? getExerciseMediaDescriptor(exercise) : { kind: 'empty', src: '' };
+    const wrapperClass = compact ? 'exercise-demo-wrap exercise-demo-wrap--compact' : 'exercise-demo-wrap';
+    if (!exercise) {
+      return `<div class="${wrapperClass} empty-state"><p class="eyebrow">Animación</p><h4>Sin ejercicio</h4><p class="muted">No hay animación disponible.</p></div>`;
+    }
+    if (selectedMedia.kind === 'loading' && allowLoading) {
+      return `
+        <div class="${wrapperClass} empty-state exercise-media-skeleton" aria-busy="true" aria-live="polite">
+          <div class="exercise-media-skeleton__spinner" aria-hidden="true"></div>
+          <p class="eyebrow">Buscando en MuscleWiki</p>
+          <h4>${escapeHtml(exercise.name)}</h4>
+          <div class="exercise-media-skeleton__bar exercise-media-skeleton__bar--short"></div>
+          <div class="exercise-media-skeleton__bar"></div>
+        </div>
+      `;
+    }
+    if (selectedMedia.kind === 'loading') {
+      return `
+        <div class="${wrapperClass} empty-state exercise-media-skeleton exercise-media-skeleton--compact" aria-busy="true" aria-live="polite">
+          <div class="exercise-media-skeleton__spinner" aria-hidden="true"></div>
+          <p class="eyebrow">MuscleWiki</p>
+          <h4>${escapeHtml(exercise.name)}</h4>
+          <div class="exercise-media-skeleton__bar exercise-media-skeleton__bar--short"></div>
+        </div>
+      `;
+    }
+    if (selectedMedia.kind === 'video') {
+      return `
+        <div class="${wrapperClass}">
+          <video class="exercise-demo" autoplay muted loop playsinline preload="metadata" poster="${escapeAttr(selectedMedia.poster || getExerciseLocalFallbackUrl(exercise))}">
+            <source src="${escapeAttr(selectedMedia.src)}">
+          </video>
+        </div>
+      `;
+    }
+    if (selectedMedia.kind === 'image') {
+      const fallback = selectedMedia.fallback || getExerciseLocalFallbackUrl(exercise);
+      return `
+        <div class="${wrapperClass}">
+          <img class="exercise-demo" src="${escapeAttr(selectedMedia.src)}" alt="${escapeAttr(exercise.name)}" loading="lazy" decoding="async" data-fallback="${escapeAttr(fallback)}" onerror="if(this.dataset.fallback && this.dataset.fallback !== this.src){this.onerror=null;this.src=this.dataset.fallback;}">
+        </div>
+      `;
+    }
+    return `
+      <div class="${wrapperClass} empty-state">
+        <p class="eyebrow">Animación</p>
+        <h4>${escapeHtml(exercise.name)}</h4>
+        <p class="muted">No hay GIF o vídeo local todavía. Se mostrará un placeholder hasta que añadas el archivo.</p>
+        <img class="exercise-demo__placeholder" src="${escapeAttr(getExerciseLocalFallbackUrl(exercise))}" alt="${escapeAttr(exercise.name)}" loading="lazy" decoding="async">
+      </div>
+    `;
   }
 
   function getRecipeVideoUrl(recipe) {

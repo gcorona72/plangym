@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 360" role="img" aria-label="Anatomía gemelos">
+  <defs>
+    <linearGradient id="body" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#e2e8f0"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.96"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="360" rx="28" fill="#0f172a"/>
+  <ellipse cx="120" cy="62" rx="28" ry="30" fill="#e2e8f0"/>
+  <path d="M82 97c10 14 26 21 38 21s28-7 38-21l10 16 15 66-25 9-12-43v113H87V145L75 188l-25-9 15-66z" fill="url(#body)"/>
+  <path d="M91 270h18v52H91zM131 270h18v52h-18z" fill="url(#body)"/>
+  <path d="M90 286h20v36H90zM130 286h20v36h-20z" fill="url(#accent)"/>
+  <path d="M81 325h34v12H81zM125 325h34v12h-34z" fill="#94a3b8"/>
+  <path d="M73 127l-24 11 11 34 20-7z" fill="#cbd5e1"/>
+  <path d="M167 127l24 11-11 34-20-7z" fill="#cbd5e1"/>
+</svg>
