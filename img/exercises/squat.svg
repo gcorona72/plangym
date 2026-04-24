@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" role="img" aria-labelledby="title desc">
+  <title id="title">Silueta humana de sentadilla</title>
+  <desc id="desc">Figura humana estilizada realizando una sentadilla con barra en la espalda.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="450" rx="30" fill="url(#bg)"/>
+  <g opacity="0.14" stroke="#cbd5e1" stroke-width="2">
+    <path d="M72 332h656"/>
+    <path d="M120 286h560"/>
+  </g>
+  <g transform="translate(185 78)">
+    <ellipse cx="145" cy="292" rx="90" ry="20" fill="#0b1220" opacity="0.55"/>
+    <circle cx="144" cy="66" r="31" fill="#e2e8f0">
+      <animate attributeName="cy" values="66;72;66" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <path d="M128 96c8 12 10 26 10 42v28c0 14 12 24 26 24h16c14 0 26-10 26-24v-30c0-14 4-26 12-38l6-9c6-9 1-21-10-24l-28-8c-10-3-18-11-22-21l-4-10c-4-10-18-12-25-4l-16 18c-7 8-8 20-4 30z" fill="#e2e8f0">
+      <animate attributeName="d" values="M128 96c8 12 10 26 10 42v28c0 14 12 24 26 24h16c14 0 26-10 26-24v-30c0-14 4-26 12-38l6-9c6-9 1-21-10-24l-28-8c-10-3-18-11-22-21l-4-10c-4-10-18-12-25-4l-16 18c-7 8-8 20-4 30z;M128 102c6 10 8 22 8 36v34c0 14 12 24 26 24h16c14 0 26-10 26-24v-32c0-14 4-26 12-36l6-8c6-9 1-21-10-24l-28-8c-10-3-18-11-22-21l-4-10c-4-10-18-12-25-4l-16 18c-7 8-8 20-4 30z;M128 96c8 12 10 26 10 42v28c0 14 12 24 26 24h16c14 0 26-10 26-24v-30c0-14 4-26 12-38l6-9c6-9 1-21-10-24l-28-8c-10-3-18-11-22-21l-4-10c-4-10-18-12-25-4l-16 18c-7 8-8 20-4 30z" dur="1.5s" repeatCount="indefinite"/>
+    </path>
+    <path d="M110 160l-38 54" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+    <path d="M182 160l42 54" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+    <path d="M128 168c-6 26-18 52-36 78" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+    <path d="M186 168c10 26 22 52 42 78" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+    <path d="M104 242c16-34 36-58 62-74 26-16 50-16 76 0 24 14 44 38 60 74" fill="none" stroke="#0ea5e9" stroke-width="16" stroke-linecap="round">
+      <animate attributeName="d" values="M104 242c16-34 36-58 62-74 26-16 50-16 76 0 24 14 44 38 60 74;M104 250c18-28 38-48 64-62 24-12 48-12 72 0 24 14 44 34 58 62;M104 242c16-34 36-58 62-74 26-16 50-16 76 0 24 14 44 38 60 74" dur="1.5s" repeatCount="indefinite"/>
+    </path>
+    <rect x="82" y="118" width="164" height="16" rx="8" fill="url(#bar)">
+      <animate attributeName="y" values="118;126;118" dur="1.5s" repeatCount="indefinite"/>
+    </rect>
+    <circle cx="82" cy="126" r="14" fill="#e2e8f0"/>
+    <circle cx="246" cy="126" r="14" fill="#e2e8f0"/>
+    <path d="M112 260l-18 36" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+    <path d="M182 260l18 36" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+  </g>
+  <text x="50%" y="392" text-anchor="middle" fill="#e2e8f0" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="700">Sentadilla · silueta humana local</text>
+</svg>

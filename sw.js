@@ -1,4 +1,4 @@
-const CACHE_NAME = 'plan-comida-cache-v1';
+const CACHE_NAME = 'plan-comida-cache-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -9,6 +9,12 @@ const ASSETS = [
   '/icon.svg',
   '/favicon.ico',
   '/404.html',
+  '/img/exercises/accessory.svg',
+  '/img/exercises/calves.svg',
+  '/img/exercises/hinge.svg',
+  '/img/exercises/pull.svg',
+  '/img/exercises/push.svg',
+  '/img/exercises/squat.svg',
 ];
 
 self.addEventListener('install', (event) => {

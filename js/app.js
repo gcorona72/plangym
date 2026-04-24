@@ -6,11 +6,26 @@
   const DB_NAME = 'plan-comida-db';
   const DB_VERSION = 1;
   const STORE_NAME = 'kv';
-  const DEFAULT_TAB = 'plan';
-  const MEAL_ORDER = ['breakfast', 'lunch', 'dinner'];
-  const MEAL_LABELS = { breakfast: 'Desayuno', lunch: 'Comida', dinner: 'Cena' };
+  const MEAL_ORDER = ['breakfast', 'lunch', 'prepost', 'dinner', 'nightSnack'];
+  const MEAL_LABELS = {
+    breakfast: 'Desayuno',
+    lunch: 'Almuerzo',
+    prepost: 'Pre/Post Entreno',
+    dinner: 'Cena',
+    nightSnack: 'Snack Nocturno',
+    snack: 'Snack',
+  };
+  const MEAL_TARGET_RATIOS = {
+    breakfast: 0.22,
+    lunch: 0.3,
+    prepost: 0.12,
+    dinner: 0.26,
+    nightSnack: 0.1,
+  };
   const TAB_LABELS = {
-    plan: 'Mi Plan',
+    plan: 'Calendario semanal',
+    nutrition: 'Nutrición',
+    training: 'Entrenamiento',
     recipes: 'Recetas',
     progress: 'Progreso',
     shopping: 'Lista de la Compra',
@@ -52,11 +67,20 @@
     notes: '',
   };
   const defaultGoals = { calories: 2850, protein: 170, carbs: 355, fats: 90 };
+  const defaultExerciseMediaConfig = {
+    provider: 'exercisedb',
+    enabled: false,
+    rapidApiKey: '',
+    rapidApiHost: 'exercisedb.p.rapidapi.com',
+    baseUrl: 'https://exercisedb.p.rapidapi.com',
+  };
 
   const defaultState = {
     version: 1,
-    tab: DEFAULT_TAB,
+    tab: 'plan',
     activeDate: todayKey(),
+    weekFocusDate: todayKey(),
+    weekScrollLeft: 0,
     recipeQuery: '',
     recipeCategory: 'all',
     shoppingDays: 3,
@@ -65,9 +89,17 @@
     recipeDraftOpen: false,
     recipeDraft: createEmptyRecipeDraft(),
     selectedRecipeId: null,
+    selectedExerciseVideoId: null,
+    routineModalOpen: false,
+    selectedRoutineDate: todayKey(),
+    exerciseMediaConfig: clone(defaultExerciseMediaConfig),
+    exerciseMediaCache: {},
+    exerciseMediaRequests: {},
     status: { text: '', type: 'info' },
     profile: clone(defaultProfile),
     goals: clone(defaultGoals),
+    nutrition: createNutritionState(),
+    training: createTrainingState(),
     customRecipes: [],
     plans: {},
     history: seedHistory(),
@@ -387,6 +419,31 @@
       steps: ['Sirve el yogur en un bol.', 'Añade la fruta troceada y las nueces.', 'Toma como merienda o post-entrenamiento ligero.'],
       notes: 'Se puede usar como refuerzo si necesitas más calorías.',
     },
+    {
+      id: 'snack-pavo-queso',
+      name: 'Sándwich integral de pavo y queso fresco',
+      mealType: 'snack',
+      categories: ['Post-Entrenamiento', 'Comidas Rápidas'],
+      emoji: '🥪',
+      accent: ['#14b8a6', '#0f172a'],
+      prepTime: 7,
+      proteinSource: 'Pavo y queso fresco',
+      calories: 360,
+      protein: 28,
+      carbs: 34,
+      fats: 12,
+      sections: ['Panadería', 'Charcutería', 'Lácteos'],
+      dietary: ['omnivore', 'flexible'],
+      allergens: ['gluten', 'lactose'],
+      ingredients: [
+        { name: 'Pan integral', amount: '2 rebanadas', section: 'Panadería' },
+        { name: 'Pechuga de pavo', amount: '100 g', section: 'Charcutería' },
+        { name: 'Queso fresco batido', amount: '80 g', section: 'Lácteos' },
+        { name: 'Tomate', amount: '1/2 ud', section: 'Verduras' },
+      ],
+      steps: ['Tuesta el pan ligeramente.', 'Rellena con pavo, queso fresco y tomate.', 'Cierra y toma como snack o pre/post entreno.'],
+      notes: 'Una alternativa rápida y alta en proteína para completar el día.',
+    },
   ];
 
   let dbPromise = null;
@@ -426,8 +483,10 @@
   function hydrateState(stored) {
     const incoming = stored && typeof stored === 'object' ? stored : {};
     const merged = clone(defaultState);
-    merged.tab = incoming.tab || DEFAULT_TAB;
+    merged.tab = incoming.tab || 'plan';
     merged.activeDate = incoming.activeDate || merged.activeDate;
+    merged.weekFocusDate = incoming.weekFocusDate || merged.activeDate;
+    merged.weekScrollLeft = Number(incoming.weekScrollLeft) || 0;
     merged.recipeQuery = incoming.recipeQuery || '';
     merged.recipeCategory = incoming.recipeCategory || 'all';
     merged.shoppingDays = Number(incoming.shoppingDays) || merged.shoppingDays;
@@ -436,8 +495,16 @@
     merged.recipeDraftOpen = Boolean(incoming.recipeDraftOpen);
     merged.recipeDraft = incoming.recipeDraft ? { ...createEmptyRecipeDraft(), ...incoming.recipeDraft } : createEmptyRecipeDraft();
     merged.selectedRecipeId = incoming.selectedRecipeId || null;
+    merged.selectedExerciseVideoId = incoming.selectedExerciseVideoId || null;
+    merged.routineModalOpen = Boolean(incoming.routineModalOpen);
+    merged.selectedRoutineDate = incoming.selectedRoutineDate || merged.activeDate;
+    merged.exerciseMediaConfig = normalizeExerciseMediaConfig(incoming.exerciseMediaConfig);
+    merged.exerciseMediaCache = sanitizeExerciseMediaCache(incoming.exerciseMediaCache);
+    merged.exerciseMediaRequests = {};
     merged.profile = incoming.profile ? { ...clone(defaultProfile), ...incoming.profile } : clone(defaultProfile);
     merged.goals = incoming.goals ? { ...clone(defaultGoals), ...incoming.goals } : clone(defaultGoals);
+    merged.nutrition = incoming.nutrition ? { ...createNutritionState(), ...incoming.nutrition, meals: Array.isArray(incoming.nutrition.meals) ? incoming.nutrition.meals : createNutritionState().meals } : createNutritionState();
+    merged.training = incoming.training ? { ...createTrainingState(), ...incoming.training, days: Array.isArray(incoming.training.days) ? incoming.training.days : createTrainingState().days, logsByDate: incoming.training.logsByDate && typeof incoming.training.logsByDate === 'object' ? incoming.training.logsByDate : createTrainingState().logsByDate } : createTrainingState();
     merged.customRecipes = Array.isArray(incoming.customRecipes) ? incoming.customRecipes : [];
     merged.plans = incoming.plans && typeof incoming.plans === 'object' ? incoming.plans : {};
     merged.history = Array.isArray(incoming.history) ? incoming.history : seedHistory();
@@ -517,13 +584,84 @@
       return;
     }
 
+    if (action === 'swap-week-meal' || action === 'select-week-day') {
+      if (action === 'select-week-day') {
+        state.activeDate = actionTarget.dataset.date;
+        state.weekFocusDate = actionTarget.dataset.date;
+        ensureTodayPlan();
+        render();
+        queueSave();
+        return;
+      }
+      setWeekMealOption(actionTarget.dataset.date, actionTarget.dataset.slot, actionTarget.dataset.optionId);
+      return;
+    }
+
+    if (action === 'open-exercise-video') {
+      state.selectedExerciseVideoId = actionTarget.dataset.exerciseId || null;
+      state.selectedRoutineDate = actionTarget.dataset.date || state.selectedRoutineDate || state.activeDate;
+      state.routineModalOpen = true;
+      primeExerciseMedia(getExerciseById(state.selectedExerciseVideoId));
+      render();
+      queueSave();
+      return;
+    }
+
+    if (action === 'close-exercise-video') {
+      state.selectedExerciseVideoId = null;
+      state.routineModalOpen = false;
+      render();
+      queueSave();
+      return;
+    }
+
+    if (action === 'open-training-routine') {
+      state.selectedRoutineDate = actionTarget.dataset.date || state.activeDate;
+      state.routineModalOpen = true;
+      const selectedTraining = getTrainingRoutineForDate(state.selectedRoutineDate);
+      state.selectedExerciseVideoId = selectedTraining?.exercises?.[0]?.id || null;
+      primeExerciseMedia(getExerciseById(state.selectedExerciseVideoId));
+      render();
+      queueSave();
+      return;
+    }
+
+    if (action === 'close-training-routine') {
+      state.routineModalOpen = false;
+      render();
+      queueSave();
+      return;
+    }
+
     switch (action) {
       case 'next-plan':
         state.activeDate = addDays(state.activeDate, 1);
+        state.weekFocusDate = state.activeDate;
         ensureTodayPlan();
         state.status = { text: `Se generó el plan para ${formatDateLabel(state.activeDate)}.`, type: 'success' };
         queueSave();
         render();
+        break;
+      case 'previous-week':
+        state.activeDate = addDays(state.activeDate, -7);
+        state.weekFocusDate = state.activeDate;
+        ensureTodayPlan();
+        render();
+        queueSave();
+        break;
+      case 'next-week':
+        state.activeDate = addDays(state.activeDate, 7);
+        state.weekFocusDate = state.activeDate;
+        ensureTodayPlan();
+        render();
+        queueSave();
+        break;
+      case 'go-today':
+        state.activeDate = todayKey();
+        state.weekFocusDate = state.activeDate;
+        ensureTodayPlan();
+        render();
+        queueSave();
         break;
       case 'regenerate-plan':
         regenerateCurrentPlan();
@@ -533,6 +671,14 @@
         break;
       case 'open-recipes':
         state.tab = 'recipes';
+        render();
+        break;
+      case 'open-nutrition':
+        state.tab = 'nutrition';
+        render();
+        break;
+      case 'open-training':
+        state.tab = 'training';
         render();
         break;
       case 'open-settings':
@@ -572,6 +718,17 @@
         break;
       case 'add-weight-entry':
         addWeightEntry();
+        break;
+      case 'toggle-nutrition-meal':
+        toggleNutritionMeal(actionTarget.dataset.mealId);
+        break;
+      case 'select-training-day':
+        state.training.selectedDayId = actionTarget.dataset.dayId;
+        render();
+        queueSave();
+        break;
+      case 'save-training-set':
+        saveTrainingSet(actionTarget);
         break;
       case 'dismiss-status':
         state.status = { text: '', type: 'info' };
@@ -704,7 +861,7 @@
   }
 
   function saveSettings(form) {
-    const profile = {
+    const nextProfile = {
       ...state.profile,
       name: form.name.value.trim() || state.profile.name,
       age: Number(form.age.value) || state.profile.age,
@@ -719,10 +876,19 @@
       completed: true,
       notes: form.notes.value.trim(),
     };
-    state.profile = profile;
+    const rapidApiKey = form.exerciseMediaApiKey.value.trim();
+    const exerciseMediaEnabled = Boolean(rapidApiKey);
+    state.exerciseMediaConfig = {
+      ...defaultExerciseMediaConfig,
+      enabled: exerciseMediaEnabled,
+      rapidApiKey,
+      rapidApiHost: form.exerciseMediaApiHost.value.trim() || defaultExerciseMediaConfig.rapidApiHost,
+      baseUrl: form.exerciseMediaBaseUrl.value.trim() || defaultExerciseMediaConfig.baseUrl,
+    };
+    state.profile = nextProfile;
     syncGoalsFromProfile();
     ensureTodayPlan(true);
-    state.status = { text: 'Ajustes guardados y objetivos recalculados.', type: 'success' };
+    state.status = { text: exerciseMediaEnabled ? 'Ajustes guardados. ExerciseDB queda como respaldo remoto para cuando falte un vídeo local.' : 'Ajustes guardados. Los vídeos locales en bucle seguirán siendo la opción principal.', type: 'success' };
     queueSave();
     render();
   }
@@ -852,26 +1018,37 @@
   }
 
   function generatePlanForDate(date, preservePlan = null) {
-    const plan = { date, meals: {} };
+    return normalizePlanMeals(preservePlan, date, true);
+  }
+
+  function normalizePlanMeals(plan, date, fillMissing = false) {
+    const source = plan && typeof plan === 'object' ? plan : { meals: {} };
+    const normalized = { date, meals: {} };
+
     MEAL_ORDER.forEach((slot) => {
+      const currentMeal = source.meals?.[slot] || {};
       const options = getRecipeOptions(slot, date);
-      const preservedMeal = preservePlan?.meals?.[slot];
-      const selectedId = preservedMeal && preservedMeal.locked && options.some((recipe) => recipe.id === preservedMeal.selectedRecipeId)
-        ? preservedMeal.selectedRecipeId
-        : options[0]?.id || null;
-      plan.meals[slot] = {
+      const selectedRecipeId = currentMeal.selectedRecipeId && options.some((recipe) => recipe.id === currentMeal.selectedRecipeId)
+        ? currentMeal.selectedRecipeId
+        : fillMissing
+          ? options[0]?.id || null
+          : currentMeal.selectedRecipeId || null;
+
+      normalized.meals[slot] = {
+        ...currentMeal,
         slot,
-        locked: Boolean(preservedMeal?.locked),
+        locked: Boolean(currentMeal.locked),
         options: options.slice(0, 3).map((recipe) => recipe.id),
-        optionIndex: Math.max(0, options.findIndex((recipe) => recipe.id === selectedId)),
-        selectedRecipeId: selectedId,
+        optionIndex: Math.max(0, options.findIndex((recipe) => recipe.id === selectedRecipeId)),
+        selectedRecipeId,
       };
     });
-    return plan;
+
+    return normalized;
   }
 
   function getRecipeOptions(slot, date) {
-    const mealType = slot === 'breakfast' ? 'breakfast' : slot === 'lunch' ? 'lunch' : 'dinner';
+    const mealType = getMealTypeForSlot(slot);
     const recipes = getAllRecipes().filter((recipe) => recipe.mealType === mealType);
     const seed = `${date}-${slot}-${state.profile.dietaryStyle}-${state.profile.restrictions.join(',')}`;
     const target = mealTarget(slot);
@@ -881,6 +1058,11 @@
       .sort((a, b) => b.score - a.score)
       .map((item) => item.recipe)
       .slice(0, 3);
+  }
+
+  function getMealTypeForSlot(slot) {
+    if (slot === 'prepost' || slot === 'nightSnack') return 'snack';
+    return slot;
   }
 
   function scoreRecipe(recipe, target, seed) {
@@ -893,7 +1075,7 @@
   }
 
   function mealTarget(slot) {
-    const ratio = slot === 'breakfast' ? 0.28 : slot === 'lunch' ? 0.38 : 0.34;
+    const ratio = MEAL_TARGET_RATIOS[slot] || 0.2;
     return { calories: state.goals.calories * ratio, protein: state.goals.protein * ratio };
   }
 
@@ -996,11 +1178,183 @@
     return Array.from({ length: 14 }, (_, index) => ({ date: addDays(todayKey(), index - 13), calories: 0, protein: 0, weight: 0 }));
   }
 
+  function createNutritionState() {
+    return {
+      target: { kcal: 3000, protein: 128, fats: 83, carbs: 432 },
+      meals: [
+        { id: 'meal_1', nombre: 'Desayuno', alimentos: '100g avena, 300ml leche entera, 30g crema de cacahuete, 1 plátano, 2 huevos', macros: { proteina: 35, grasa: 30, carbohidratos: 100 }, kcal: 800, consumed: false, consumedAt: null },
+        { id: 'meal_2', nombre: 'Almuerzo', alimentos: '120g arroz blanco (crudo), 150g pechuga de pollo, 1.5 cucharadas aceite de oliva', macros: { proteina: 40, grasa: 25, carbohidratos: 95 }, kcal: 750, consumed: false, consumedAt: null },
+        { id: 'meal_3', nombre: 'Pre/Post Entreno', alimentos: '250g yogur griego natural, 20g miel, 50g cereales o pan', macros: { proteina: 15, grasa: 5, carbohidratos: 70 }, kcal: 400, consumed: false, consumedAt: null },
+        { id: 'meal_4', nombre: 'Cena', alimentos: '120g pasta (crudo), 150g ternera magra picada, salsa de tomate, 1 cucharada aceite', macros: { proteina: 40, grasa: 20, carbohidratos: 90 }, kcal: 800, consumed: false, consumedAt: null },
+        { id: 'meal_5', nombre: 'Snack Nocturno', alimentos: '30g nueces o almendras, 200ml leche entera', macros: { proteina: 10, grasa: 22, carbohidratos: 15 }, kcal: 300, consumed: false, consumedAt: null },
+      ],
+    };
+  }
+
+  function createTrainingState() {
+    const program = buildTrainingProgram();
+    const logsByDate = seedTrainingLogs(program);
+    return {
+      selectedDayId: 'day1',
+      days: program,
+      logsByDate,
+      notes: 'Programa Torso/Pierna 4 días para hipertrofia con sobrecarga progresiva.',
+    };
+  }
+
+  function buildTrainingProgram() {
+    return [
+      {
+        id: 'day1',
+        name: 'Torso',
+        focus: 'Fuerza / Hipertrofia',
+        badge: 'Día 1',
+        exercises: [
+          { id: 'bench-barbell', name: 'Press de Banca con Barra', series: 4, repRange: '6-8' },
+          { id: 'barbell-row', name: 'Remo con Barra o Pendlay', series: 4, repRange: '6-8' },
+          { id: 'incline-db-press', name: 'Press Inclinado con Mancuernas', series: 3, repRange: '8-10' },
+          { id: 'lat-pulldown', name: 'Jalón al pecho o Dominadas', series: 3, repRange: '8-10' },
+          { id: 'lateral-raise', name: 'Elevaciones laterales para hombro', series: 3, repRange: '12-15' },
+          { id: 'alt-biceps-curl', name: 'Curl de Bíceps alterno', series: 3, repRange: '10-12' },
+        ],
+      },
+      {
+        id: 'day2',
+        name: 'Pierna',
+        focus: 'Cuádriceps',
+        badge: 'Día 2',
+        exercises: [
+          { id: 'back-squat', name: 'Sentadilla Libre con Barra', series: 4, repRange: '6-8' },
+          { id: 'romanian-deadlift', name: 'Peso Muerto Rumano', series: 4, repRange: '8-10' },
+          { id: 'leg-press', name: 'Prensa de Piernas', series: 3, repRange: '10-12' },
+          { id: 'lying-leg-curl', name: 'Curl de Isquios en máquina', series: 3, repRange: '12-15' },
+          { id: 'standing-calf-raise', name: 'Gemelos de pie', series: 4, repRange: '12-15' },
+        ],
+      },
+      {
+        id: 'day3',
+        name: 'Descanso',
+        focus: 'Recuperación',
+        badge: 'Día 3',
+        restDay: true,
+        message: 'Recuperación Activa',
+        exercises: [],
+      },
+      {
+        id: 'day4',
+        name: 'Torso',
+        focus: 'Hipertrofia',
+        badge: 'Día 4',
+        exercises: [
+          { id: 'shoulder-press', name: 'Press Militar con Mancuernas o Barra', series: 4, repRange: '8-10' },
+          { id: 'low-pulley-row', name: 'Remo en Polea Baja', series: 4, repRange: '10-12' },
+          { id: 'flat-db-press', name: 'Press de Banca Plano con Mancuernas', series: 3, repRange: '10-12' },
+          { id: 'facepull', name: 'Remo al cuello o Facepull', series: 3, repRange: '12-15' },
+          { id: 'triceps-pushdown', name: 'Extensión de Tríceps en polea', series: 3, repRange: '10-12' },
+          { id: 'hammer-curl', name: 'Curl de Bíceps Martillo', series: 3, repRange: '10-12' },
+        ],
+      },
+      {
+        id: 'day5',
+        name: 'Pierna',
+        focus: 'Cadera / Isquios',
+        badge: 'Día 5',
+        exercises: [
+          { id: 'conventional-deadlift', name: 'Peso Muerto Convencional o Hip Thrust', series: 4, repRange: '6-8' },
+          { id: 'bulgarian-split-squat', name: 'Sentadilla Búlgara con mancuernas', series: 3, repRange: '8-10 por pierna' },
+          { id: 'leg-extension', name: 'Extensiones de Cuádriceps en máquina', series: 3, repRange: '12-15' },
+          { id: 'seated-leg-curl', name: 'Curl de Isquios sentado', series: 3, repRange: '10-12' },
+          { id: 'seated-calf-raise', name: 'Gemelos sentado', series: 4, repRange: '15-20' },
+        ],
+      },
+    ];
+  }
+
+  function seedTrainingLogs(program) {
+    const baselineDate = addDays(todayKey(), -7);
+    const seedSets = {
+      'bench-barbell': [{ weight: 50, reps: 8, rir: 2 }, { weight: 50, reps: 8, rir: 1 }, { weight: 47.5, reps: 7, rir: 1 }],
+      'barbell-row': [{ weight: 60, reps: 8, rir: 2 }, { weight: 60, reps: 7, rir: 1 }, { weight: 57.5, reps: 7, rir: 1 }],
+      'incline-db-press': [{ weight: 22.5, reps: 10, rir: 2 }, { weight: 22.5, reps: 9, rir: 1 }, { weight: 20, reps: 10, rir: 1 }],
+      'lat-pulldown': [{ weight: 55, reps: 10, rir: 2 }, { weight: 55, reps: 9, rir: 1 }, { weight: 52.5, reps: 9, rir: 1 }],
+      'lateral-raise': [{ weight: 10, reps: 15, rir: 2 }, { weight: 10, reps: 14, rir: 1 }, { weight: 8, reps: 15, rir: 1 }],
+      'alt-biceps-curl': [{ weight: 12.5, reps: 12, rir: 2 }, { weight: 12.5, reps: 11, rir: 1 }, { weight: 10, reps: 12, rir: 1 }],
+      'back-squat': [{ weight: 80, reps: 8, rir: 2 }, { weight: 80, reps: 7, rir: 1 }, { weight: 75, reps: 7, rir: 1 }],
+      'romanian-deadlift': [{ weight: 70, reps: 10, rir: 2 }, { weight: 70, reps: 9, rir: 1 }, { weight: 67.5, reps: 8, rir: 1 }],
+      'leg-press': [{ weight: 140, reps: 12, rir: 2 }, { weight: 140, reps: 11, rir: 1 }, { weight: 130, reps: 10, rir: 1 }],
+      'lying-leg-curl': [{ weight: 35, reps: 15, rir: 2 }, { weight: 35, reps: 13, rir: 1 }, { weight: 30, reps: 12, rir: 1 }],
+      'standing-calf-raise': [{ weight: 40, reps: 15, rir: 2 }, { weight: 40, reps: 14, rir: 1 }, { weight: 35, reps: 14, rir: 1 }],
+      'shoulder-press': [{ weight: 30, reps: 10, rir: 2 }, { weight: 30, reps: 9, rir: 1 }, { weight: 27.5, reps: 8, rir: 1 }],
+      'low-pulley-row': [{ weight: 50, reps: 12, rir: 2 }, { weight: 50, reps: 11, rir: 1 }, { weight: 47.5, reps: 10, rir: 1 }],
+      'flat-db-press': [{ weight: 24, reps: 12, rir: 2 }, { weight: 24, reps: 11, rir: 1 }, { weight: 22.5, reps: 10, rir: 1 }],
+      facepull: [{ weight: 20, reps: 15, rir: 2 }, { weight: 20, reps: 13, rir: 1 }, { weight: 17.5, reps: 13, rir: 1 }],
+      'triceps-pushdown': [{ weight: 25, reps: 12, rir: 2 }, { weight: 25, reps: 11, rir: 1 }, { weight: 22.5, reps: 10, rir: 1 }],
+      'hammer-curl': [{ weight: 14, reps: 12, rir: 2 }, { weight: 14, reps: 11, rir: 1 }, { weight: 12, reps: 10, rir: 1 }],
+      'conventional-deadlift': [{ weight: 90, reps: 8, rir: 2 }, { weight: 90, reps: 7, rir: 1 }, { weight: 85, reps: 6, rir: 1 }],
+      'bulgarian-split-squat': [{ weight: 22, reps: 10, rir: 2 }, { weight: 22, reps: 9, rir: 1 }, { weight: 20, reps: 8, rir: 1 }],
+      'leg-extension': [{ weight: 40, reps: 15, rir: 2 }, { weight: 40, reps: 14, rir: 1 }, { weight: 35, reps: 13, rir: 1 }],
+      'seated-leg-curl': [{ weight: 30, reps: 12, rir: 2 }, { weight: 30, reps: 11, rir: 1 }, { weight: 27.5, reps: 10, rir: 1 }],
+      'seated-calf-raise': [{ weight: 25, reps: 20, rir: 2 }, { weight: 25, reps: 18, rir: 1 }, { weight: 22.5, reps: 17, rir: 1 }],
+    };
+
+    const logsByDate = {
+      [baselineDate]: Object.fromEntries(
+        program.flatMap((day) => day.exercises || []).map((exercise) => [exercise.id, seedSets[exercise.id] || []]),
+      ),
+    };
+
+    return logsByDate;
+  }
+
   function createEmptyRecipeDraft() {
     return { name: '', mealType: 'lunch', category: 'Comidas Rápidas', emoji: '🍽️', prepTime: 15, proteinSource: '', calories: 500, protein: 30, carbs: 40, fats: 15, ingredients: '', steps: '', notes: '' };
   }
 
+  function setupWeekGridInteractions(weekGrid) {
+    if (!weekGrid || weekGrid.dataset.enhanced === 'true') return;
+    weekGrid.dataset.enhanced = 'true';
+
+    let isDragging = false;
+    let startX = 0;
+    let startScrollLeft = 0;
+
+    const isInteractiveTarget = (target) => Boolean(
+      target?.closest?.('button, a, input, select, textarea, [data-action]'),
+    );
+
+    const onPointerDown = (event) => {
+      if (event.button !== 0 || isInteractiveTarget(event.target)) return;
+      isDragging = true;
+      startX = event.clientX;
+      startScrollLeft = weekGrid.scrollLeft;
+      weekGrid.classList.add('is-dragging');
+      weekGrid.setPointerCapture?.(event.pointerId);
+    };
+
+    const onPointerMove = (event) => {
+      if (!isDragging) return;
+      const delta = event.clientX - startX;
+      weekGrid.scrollLeft = startScrollLeft - delta;
+    };
+
+    const endDrag = (event) => {
+      if (!isDragging) return;
+      isDragging = false;
+      weekGrid.classList.remove('is-dragging');
+      weekGrid.releasePointerCapture?.(event.pointerId);
+    };
+
+    weekGrid.addEventListener('pointerdown', onPointerDown);
+    weekGrid.addEventListener('pointermove', onPointerMove);
+    weekGrid.addEventListener('pointerup', endDrag);
+    weekGrid.addEventListener('pointercancel', endDrag);
+    weekGrid.addEventListener('pointerleave', endDrag);
+  }
+
   function render() {
+    const weekGridBefore = appRoot.querySelector('.week-grid');
+    if (weekGridBefore) state.weekScrollLeft = weekGridBefore.scrollLeft;
+
     document.title = `${TAB_LABELS[state.tab] || 'Plan comida'} · PWA local-first`;
     const plan = getActivePlan();
     const totals = getDailyTotals(plan);
@@ -1036,10 +1390,26 @@
         </main>
 
         ${renderRecipeDetailModal()}
+        ${renderExerciseVideoModal()}
         ${renderOnboardingModal()}
         ${renderRecipeCreatorModal()}
       </div>
     `;
+
+    requestAnimationFrame(() => {
+      const weekGrid = appRoot.querySelector('.week-grid');
+      if (!weekGrid) return;
+      setupWeekGridInteractions(weekGrid);
+      if (state.weekFocusDate) {
+        const focusedCard = weekGrid.querySelector(`[data-day-card="${state.weekFocusDate}"]`);
+        if (focusedCard && typeof focusedCard.scrollIntoView === 'function') {
+          focusedCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+        state.weekFocusDate = null;
+        return;
+      }
+      weekGrid.scrollLeft = Number(state.weekScrollLeft) || 0;
+    });
   }
 
   function renderStatus() {
@@ -1058,6 +1428,8 @@
     }
     switch (state.tab) {
       case 'plan': return renderDashboard(plan, totals, completion);
+      case 'nutrition': return renderNutrition();
+      case 'training': return renderTraining();
       case 'recipes': return renderRecipes();
       case 'progress': return renderProgress();
       case 'shopping': return renderShoppingList();
@@ -1067,45 +1439,229 @@
   }
 
   function renderDashboard(plan, totals, completion) {
+    const weekDates = getWeekDates(state.activeDate);
+    const weekPlans = weekDates.map((date) => ensurePlanForDate(date));
+    const weekTotals = weekPlans.reduce((acc, dayPlan) => {
+      const dayTotals = getDailyTotals(dayPlan);
+      acc.calories += dayTotals.calories;
+      acc.protein += dayTotals.protein;
+      acc.carbs += dayTotals.carbs;
+      acc.fats += dayTotals.fats;
+      return acc;
+    }, { calories: 0, protein: 0, carbs: 0, fats: 0 });
+    const activeDayIndex = weekDates.indexOf(state.activeDate);
+    const selectedDate = weekDates[activeDayIndex >= 0 ? activeDayIndex : 0];
+    const selectedPlan = ensurePlanForDate(selectedDate);
+    const selectedTotals = getDailyTotals(selectedPlan);
+    const weeklyCompletion = Math.min(100, Math.round((weekTotals.protein / (state.goals.protein * 7)) * 100));
+
     return `
-      <section class="hero glass-panel">
+      <section class="hero glass-panel calendar-hero">
         <div class="hero-copy">
-          <p class="eyebrow">Mi Plan</p>
-          <h2>Meals for Today · ${formatDateLabel(plan.date)}</h2>
-          <p class="subtitle">Objetivo diario: ${state.goals.calories.toLocaleString('es-ES')} kcal · ${state.goals.protein} g proteína. Hoy llevas ${totals.calories.toLocaleString('es-ES')} kcal y ${totals.protein} g de proteína.</p>
-          <div class="progress-rail" aria-label="Progreso de proteína"><span class="progress-rail__label">Proteína</span><div class="progress-rail__track"><span style="width:${completion}%"></span></div><span class="progress-rail__value">${completion}%</span></div>
+          <p class="eyebrow">Calendario semanal</p>
+          <h2>${formatWeekRangeLabel(weekDates[0], weekDates[6])}</h2>
+            <p class="subtitle">Semana completa de lunes a domingo con 5 comidas por día. Selecciona un día para entrar al detalle.</p>
+          <div class="progress-rail" aria-label="Progreso semanal de proteína"><span class="progress-rail__label">Proteína</span><div class="progress-rail__track"><span style="width:${weeklyCompletion}%"></span></div><span class="progress-rail__value">${weeklyCompletion}%</span></div>
         </div>
-        <div class="hero-actions">
-          <button class="btn btn--primary" data-action="next-plan">Generar Plan Siguiente</button>
-          <button class="btn btn--ghost" data-action="regenerate-plan">Modificar Plan Diario</button>
-          <button class="btn btn--ghost" data-action="lock-day">Bloquear día</button>
+        <div class="hero-actions hero-actions--stacked">
+          <button class="btn btn--ghost" data-action="previous-week">Semana anterior</button>
+          <button class="btn btn--primary" data-action="go-today">Ir a hoy</button>
+          <button class="btn btn--ghost" data-action="next-week">Semana siguiente</button>
+          <button class="btn btn--ghost" data-action="open-nutrition">Nutrición</button>
+          <button class="btn btn--ghost" data-action="open-training">Entrenamiento</button>
         </div>
-      </section>
-
-      <section class="dashboard-grid">
-        <div class="stack">
-          <h3 class="section-title">Comidas de hoy</h3>
-          <div class="meal-grid">${MEAL_ORDER.map((slot) => renderMealCard(slot, plan.meals[slot])).join('')}</div>
-        </div>
-
-        <aside class="summary-panel glass-panel">
-          <h3 class="section-title">Resumen nutricional</h3>
-          <div class="summary-cards">
-            ${renderMetricCard('Calorías', `${totals.calories.toLocaleString('es-ES')} / ${state.goals.calories.toLocaleString('es-ES')}`, `${Math.round((totals.calories / state.goals.calories) * 100)}%`)}
-            ${renderMetricCard('Proteína', `${totals.protein} / ${state.goals.protein} g`, `${Math.round((totals.protein / state.goals.protein) * 100)}%`)}
-            ${renderMetricCard('Carbohidratos', `${totals.carbs} g`, 'Aproximado')}
-            ${renderMetricCard('Grasas', `${totals.fats} g`, 'Aproximado')}
-          </div>
-          <div class="mini-progress"><h4>Visión semanal</h4>${renderMiniWeeklyBars()}</div>
-          <div class="quick-actions"><label class="input-group"><span>Peso actual</span><input id="weight-entry" type="number" min="30" step="0.1" placeholder="${state.profile.weight}" aria-label="Registrar peso actual"></label><button class="btn btn--secondary" data-action="add-weight-entry">Registrar peso</button></div>
-        </aside>
       </section>
 
       <section class="dashboard-grid dashboard-grid--secondary">
-        <article class="glass-panel snapshot-card"><h3 class="section-title">Objetivo ectomorfo</h3><p>Calorías altas, proteína repartida en 3 comidas principales y opciones comunes en España para adherencia real.</p><ul class="checklist"><li>Proteína por comida: 35–60 g</li><li>Ingredientes accesibles y económicos</li><li>Plan local-first con cambios sin conexión</li></ul></article>
-        <article class="glass-panel snapshot-card"><h3 class="section-title">Acciones rápidas</h3><div class="action-stack"><button class="btn btn--ghost" data-action="open-recipes">Explorar recetas</button><button class="btn btn--ghost" data-action="generate-shopping">Ver lista de compra</button><button class="btn btn--ghost" data-action="open-settings">Revisar ajustes</button></div></article>
+        <article class="glass-panel summary-card summary-card--week">
+          <h3 class="section-title">Resumen semanal</h3>
+          <div class="summary-cards">
+            ${renderMetricCard('Kcal semana', `${weekTotals.calories.toLocaleString('es-ES')}`, 'Suma de 7 días')}
+            ${renderMetricCard('Proteína semana', `${weekTotals.protein} g`, 'Objetivo x 7')}
+            ${renderMetricCard('Día activo', `${selectedTotals.calories} kcal`, formatDateLabel(selectedDate))}
+            ${renderMetricCard('Proteína activa', `${selectedTotals.protein} g`, `${Math.round((selectedTotals.protein / state.goals.protein) * 100)}%`)}
+          </div>
+        </article>
+
+        <article class="glass-panel snapshot-card snapshot-card--calendar">
+          <h3 class="section-title">Atajos</h3>
+          <div class="action-stack">
+            <button class="btn btn--ghost" data-action="open-recipes">Explorar recetas</button>
+            <button class="btn btn--ghost" data-action="generate-shopping">Ver lista de compra</button>
+            <button class="btn btn--ghost" data-action="open-settings">Revisar ajustes</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="week-grid" aria-label="Calendario semanal">
+        ${weekDates.map((date, index) => renderWeekDayCard(date, weekPlans[index], index, date === state.activeDate)).join('')}
       </section>
     `;
+  }
+
+  function renderWeekDayCard(date, plan, index, isActive) {
+    const totals = getDailyTotals(plan);
+    const training = getWeeklyTrainingDay(index);
+    return `
+      <article class="glass-panel day-card ${isActive ? 'is-active' : ''}" data-day-card="${date}">
+        <button class="day-card__header day-card__header--button" type="button" data-action="select-week-day" data-date="${date}">
+          <div>
+            <p class="eyebrow">${weekdayLabel(date)}</p>
+            <h3>${formatDateLabel(date)}</h3>
+            <p class="day-card__summary-line">${totals.calories} kcal · ${totals.protein} g proteína</p>
+          </div>
+          <div class="day-card__stats">
+            <strong>${training.badge}</strong>
+            <small>${MEAL_ORDER.length} comidas</small>
+          </div>
+        </button>
+
+        <div class="day-card__preview">
+          <div class="day-card__meals">
+            ${MEAL_ORDER.map((slot) => renderWeekMealPreview(date, slot, plan.meals[slot])).join('')}
+          </div>
+          ${renderWeeklyTrainingSummary(training, date)}
+        </div>
+      </article>
+    `;
+  }
+
+  function renderWeeklyTrainingSummary(training, date) {
+    return `
+      <div class="routine-block routine-block--compact">
+        <button class="btn btn--ghost btn--small routine-block__summary routine-block__summary--button" type="button" data-action="open-training-routine" data-date="${date}">
+          Rutina de hoy
+        </button>
+        <p class="day-card__note">La rutina completa se abre en la ventana grande.</p>
+      </div>
+    `;
+  }
+
+  function renderWeekMealPreview(date, slot, meal) {
+    const recipe = getRecipeById(meal?.selectedRecipeId);
+    if (!recipe) {
+      return `<div class="week-meal week-meal--empty"><span class="week-meal__label">${MEAL_LABELS[slot]}</span><strong>Sin receta asignada</strong></div>`;
+    }
+    return `
+      <button class="week-meal" type="button" data-recipe-id="${recipe.id}" aria-label="Ver detalle de ${escapeAttr(recipe.name)}">
+        <div class="week-meal__header">
+          <span class="week-meal__label">${MEAL_LABELS[slot]}</span>
+          <span class="week-meal__mini">${recipe.calories} kcal</span>
+        </div>
+        <strong>${escapeHtml(recipe.name)}</strong>
+        <div class="week-meal__meta">
+          <span>${recipe.protein} g proteína</span>
+          <span>${recipe.prepTime} min</span>
+        </div>
+      </button>
+    `;
+  }
+
+  function renderWeekMealBlock(date, slot, meal, isActive) {
+    const recipe = getRecipeById(meal?.selectedRecipeId);
+    if (!recipe) {
+      return `<article class="meal-block empty-state">Sin receta disponible.</article>`;
+    }
+    const options = getRecipeOptions(slot, date);
+    return `
+      <details class="meal-block ${isActive ? 'is-open' : ''}" ${isActive ? 'open' : ''}>
+        <summary>
+          <div>
+            <span class="meal-block__label">${MEAL_LABELS[slot]}</span>
+            <strong>${escapeHtml(recipe.name)}</strong>
+          </div>
+          <div class="meal-block__mini">
+            <span>${recipe.calories} kcal</span>
+            <span>${recipe.protein} g</span>
+          </div>
+        </summary>
+
+        <div class="meal-block__body">
+          <div class="meal-block__alternatives">
+            ${options.map((option) => `<button class="chip chip--filter ${option.id === recipe.id ? 'is-active' : ''}" type="button" data-action="swap-week-meal" data-date="${date}" data-slot="${slot}" data-option-id="${option.id}">${escapeHtml(option.name)}</button>`).join('')}
+          </div>
+
+          <div class="meal-block__content">
+            <div>
+              <h5>Ingredientes</h5>
+              <ul class="ingredients-list">
+                ${recipe.ingredients.map((ingredient) => `<li><strong>${escapeHtml(ingredient.name)}</strong><span>${escapeHtml(ingredient.amount)}</span></li>`).join('')}
+              </ul>
+            </div>
+            <div>
+              <h5>Preparación</h5>
+              <ol class="steps-list">
+                ${recipe.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
+              </ol>
+            </div>
+          </div>
+
+          <div class="meal-block__links">
+            <button class="btn btn--secondary btn--small" type="button" data-recipe-id="${recipe.id}">Ver detalle</button>
+            <a class="btn btn--ghost btn--small" href="${getRecipeVideoUrl(recipe)}" target="_blank" rel="noopener noreferrer">YouTube</a>
+          </div>
+        </div>
+      </details>
+    `;
+  }
+
+  function setWeekMealOption(date, slot, recipeId) {
+    if (!date || !slot || !recipeId) return;
+    const plan = ensurePlanForDate(date);
+    const meal = plan.meals[slot];
+    if (!meal || meal.locked) {
+      state.status = { text: 'Desbloquea la comida para cambiarla.', type: 'warning' };
+      render();
+      return;
+    }
+    meal.selectedRecipeId = recipeId;
+    const options = getRecipeOptions(slot, date);
+    meal.optionIndex = Math.max(0, options.findIndex((option) => option.id === recipeId));
+    state.status = { text: `${MEAL_LABELS[slot]} actualizada para ${formatDateLabel(date)}.`, type: 'success' };
+    queueSave();
+    render();
+  }
+
+  function getWeeklyTrainingDay(index) {
+    if (index === 0) return state.training.days[0];
+    if (index === 1) return state.training.days[1];
+    if (index === 2) return state.training.days[2];
+    if (index === 3) return state.training.days[3];
+    if (index === 4) return state.training.days[4];
+    if (index === 5) return { id: 'recovery-sat', badge: 'Sábado', message: 'Recuperación Activa', restDay: true };
+    return { id: 'recovery-sun', badge: 'Domingo', message: 'Descanso y preparación', restDay: true };
+  }
+
+  function ensurePlanForDate(date) {
+    if (!state.plans[date]) {
+      state.plans[date] = generatePlanForDate(date, null);
+      return state.plans[date];
+    }
+    state.plans[date] = normalizePlanMeals(state.plans[date], date, false);
+    return state.plans[date];
+  }
+
+  function getWeekDates(anchorDate) {
+    const monday = startOfWeek(anchorDate);
+    return Array.from({ length: 7 }, (_, index) => addDays(monday, index));
+  }
+
+  function startOfWeek(value) {
+    const date = new Date(`${value}T12:00:00`);
+    const day = date.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    date.setDate(date.getDate() + diff);
+    return dateKey(date);
+  }
+
+  function formatWeekRangeLabel(startDate, endDate) {
+    const start = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short' }).format(new Date(`${startDate}T12:00:00`));
+    const end = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short' }).format(new Date(`${endDate}T12:00:00`));
+    return `${start} · ${end}`;
+  }
+
+  function weekdayLabel(value) {
+    return new Intl.DateTimeFormat('es-ES', { weekday: 'long' }).format(new Date(`${value}T12:00:00`));
   }
 
   function renderMealCard(slot, meal) {
@@ -1132,6 +1688,237 @@
     const entries = state.history.slice(-7);
     if (!entries.length) return '<p class="muted">Sin datos todavía.</p>';
     return `<div class="bars">${entries.map((entry) => { const height = Math.max(20, Math.min(100, Math.round((entry.protein / state.goals.protein) * 100))); return `<div class="bar-item"><span style="height:${height}%"></span><small>${shortDay(entry.date)}</small></div>`; }).join('')}</div>`;
+  }
+
+  function computeNutritionProgress() {
+    const consumedMeals = state.nutrition.meals.filter((meal) => meal.consumed);
+    const totals = consumedMeals.reduce((acc, meal) => {
+      acc.kcal += meal.kcal;
+      acc.protein += meal.macros.proteina;
+      acc.fats += meal.macros.grasa;
+      acc.carbs += meal.macros.carbohidratos;
+      return acc;
+    }, { kcal: 0, protein: 0, fats: 0, carbs: 0 });
+    const target = state.nutrition.target;
+    return {
+      totals,
+      consumedCount: consumedMeals.length,
+      progress: {
+        kcal: Math.min(100, Math.round((totals.kcal / target.kcal) * 100)),
+        protein: Math.min(100, Math.round((totals.protein / target.protein) * 100)),
+        fats: Math.min(100, Math.round((totals.fats / target.fats) * 100)),
+        carbs: Math.min(100, Math.round((totals.carbs / target.carbs) * 100)),
+      },
+    };
+  }
+
+  function renderNutrition() {
+    const { totals, consumedCount, progress } = computeNutritionProgress();
+    const target = state.nutrition.target;
+    const completion = Math.min(100, Math.round((totals.kcal / target.kcal) * 100));
+
+    return `
+      <section class="panel-stack">
+        <article class="glass-panel section-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Nutrición</p>
+              <h2>Objetivo estático · 3000 kcal para masa muscular</h2>
+            </div>
+            <span class="step-pill">${consumedCount}/${state.nutrition.meals.length} comidas marcadas</span>
+          </div>
+
+          <div class="nutrition-hero">
+            <div class="nutrition-hero__summary">
+              <p class="muted">Lo consumido hoy se compara con tu objetivo total y el plan es editable por marcas de consumido.</p>
+              <div class="nutrition-total">
+                <strong>${totals.kcal} / ${target.kcal} kcal</strong>
+                <div class="progress-rail"><span class="progress-rail__label">Energía</span><div class="progress-rail__track"><span style="width:${completion}%"></span></div><span class="progress-rail__value">${completion}%</span></div>
+              </div>
+            </div>
+            <div class="nutrition-hero__macros">
+              ${renderMetricCard('Proteína', `${totals.protein} / ${target.protein} g`, `${progress.protein}%`)}
+              ${renderMetricCard('Grasas', `${totals.fats} / ${target.fats} g`, `${progress.fats}%`)}
+              ${renderMetricCard('Carbohidratos', `${totals.carbs} / ${target.carbs} g`, `${progress.carbs}%`)}
+            </div>
+          </div>
+        </article>
+
+        <section class="nutrition-grid">
+          ${state.nutrition.meals.map((meal) => renderNutritionMealCard(meal)).join('')}
+        </section>
+      </section>
+    `;
+  }
+
+  function renderNutritionMealCard(meal) {
+    return `
+      <article class="glass-panel nutrition-card ${meal.consumed ? 'is-consumed' : ''}" data-meal-id="${meal.id}">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">${escapeHtml(meal.nombre)}</p>
+            <h3>${escapeHtml(meal.alimentos)}</h3>
+          </div>
+          <button class="btn btn--${meal.consumed ? 'secondary' : 'primary'} btn--small" data-action="toggle-nutrition-meal" data-meal-id="${meal.id}">${meal.consumed ? 'Consumido' : 'Marcar consumido'}</button>
+        </div>
+
+        <div class="macro-row macro-row--compact">
+          <span>${meal.macros.proteina} g proteína</span>
+          <span>${meal.macros.grasa} g grasa</span>
+          <span>${meal.macros.carbohidratos} g carbos</span>
+          <span>${meal.kcal} kcal</span>
+        </div>
+
+        <div class="mini-progress mini-progress--compact">
+          <div class="nutrition-bar"><span>Proteína</span><div class="nutrition-bar__track"><span style="width:${Math.min(100, Math.round((meal.macros.proteina / state.nutrition.target.protein) * 100))}%"></span></div></div>
+          <div class="nutrition-bar"><span>Carbohidratos</span><div class="nutrition-bar__track"><span style="width:${Math.min(100, Math.round((meal.macros.carbohidratos / state.nutrition.target.carbs) * 100))}%"></span></div></div>
+          <div class="nutrition-bar"><span>Grasas</span><div class="nutrition-bar__track"><span style="width:${Math.min(100, Math.round((meal.macros.grasa / state.nutrition.target.fats) * 100))}%"></span></div></div>
+        </div>
+
+        <p class="muted">${meal.consumed ? `Marcado como consumido${meal.consumedAt ? ` · ${new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(new Date(meal.consumedAt))}` : ''}` : 'Toca el botón para sumar esta comida al progreso del día.'}</p>
+      </article>
+    `;
+  }
+
+  function toggleNutritionMeal(mealId) {
+    const meal = state.nutrition.meals.find((item) => item.id === mealId);
+    if (!meal) return;
+    meal.consumed = !meal.consumed;
+    meal.consumedAt = meal.consumed ? new Date().toISOString() : null;
+    state.status = { text: `${meal.nombre} ${meal.consumed ? 'marcado como consumido' : 'desmarcado'}.`, type: 'success' };
+    queueSave();
+    render();
+  }
+
+  function getTrainingDay(dayId = state.training.selectedDayId) {
+    return state.training.days.find((day) => day.id === dayId) || state.training.days[0];
+  }
+
+  function getTrainingLogDates() {
+    return Object.keys(state.training.logsByDate).sort();
+  }
+
+  function getLastSessionForExercise(exerciseId, beforeDate = todayKey()) {
+    const dates = getTrainingLogDates().filter((date) => date < beforeDate).sort().reverse();
+    for (const date of dates) {
+      const dayLogs = state.training.logsByDate[date];
+      const session = dayLogs?.[exerciseId];
+      if (Array.isArray(session) && session.length) {
+        return { date, sets: session };
+      }
+    }
+    return null;
+  }
+
+  function summarizeSession(session) {
+    if (!session) return 'Sin sesión previa registrada.';
+    const bestWeight = Math.max(...session.sets.map((set) => Number(set.weight) || 0));
+    const reps = session.sets.map((set) => Number(set.reps) || 0).join(' / ');
+    const rir = session.sets.map((set) => `RIR ${set.rir}`).join(' · ');
+    const dateLabel = new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short' }).format(new Date(`${session.date}T12:00:00`));
+    return `${bestWeight} kg · ${reps} reps · ${rir} · ${dateLabel}`;
+  }
+
+  function renderTraining() {
+    const selectedDay = getTrainingDay();
+    const currentLogs = state.training.logsByDate[todayKey()] || {};
+    const dayIsRest = Boolean(selectedDay.restDay);
+
+    return `
+      <section class="panel-stack">
+        <article class="glass-panel section-panel">
+          <div class="section-heading">
+            <div><p class="eyebrow">Entrenamiento</p><h2>Torso / Pierna 4 días · Sobrecarga progresiva</h2></div>
+            <span class="step-pill">${selectedDay.badge}</span>
+          </div>
+          <p class="muted">Registra peso, repeticiones y RIR. La app buscará automáticamente la última sesión previa de cada ejercicio.</p>
+        </article>
+
+        <section class="training-days">
+          ${state.training.days.map((day) => `
+            <button class="glass-panel training-day ${selectedDay.id === day.id ? 'is-active' : ''}" data-action="select-training-day" data-day-id="${day.id}">
+              <strong>${escapeHtml(day.badge)}</strong>
+              <span>${escapeHtml(day.name)}</span>
+              <small>${day.restDay ? day.message : day.focus}</small>
+            </button>
+          `).join('')}
+        </section>
+
+        ${dayIsRest ? `
+          <article class="glass-panel section-panel training-rest">
+            <h3>${escapeHtml(selectedDay.message)}</h3>
+            <p class="muted">Día de descanso activo: movilidad, paseo suave, sueño y comida para recuperar.</p>
+          </article>
+        ` : `
+          <section class="training-grid">
+            ${selectedDay.exercises.map((exercise) => renderExerciseCard(selectedDay, exercise, currentLogs)).join('')}
+          </section>
+        `}
+      </section>
+    `;
+  }
+
+  function renderExerciseCard(day, exercise, currentLogs) {
+    const session = getLastSessionForExercise(exercise.id);
+    const todaySets = currentLogs?.[exercise.id] || [];
+    return `
+      <article class="glass-panel exercise-card" data-exercise-id="${exercise.id}">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">${escapeHtml(day.name)}</p>
+            <h3>${escapeHtml(exercise.name)}</h3>
+            <p class="muted">${exercise.series} series · ${exercise.repRange} reps</p>
+          </div>
+          <span class="step-pill">Última sesión</span>
+        </div>
+
+        <div class="last-session">
+          <strong>${summarizeSession(session)}</strong>
+          <small>Intenta superar esta referencia con una serie más sólida o más reps.</small>
+        </div>
+
+        <div class="exercise-log">
+          <label class="input-group"><span>Peso levantado</span><input data-field="weight" type="number" min="0" step="0.5" placeholder="kg"></label>
+          <label class="input-group"><span>Repeticiones</span><input data-field="reps" type="number" min="1" step="1" placeholder="reps"></label>
+          <label class="input-group"><span>RIR</span><input data-field="rir" type="number" min="0" max="5" step="1" placeholder="RIR"></label>
+          <button class="btn btn--primary" type="button" data-action="save-training-set" data-exercise-id="${exercise.id}">Guardar serie</button>
+        </div>
+
+        <div class="session-list">
+          <h4>Sesión de hoy</h4>
+          ${todaySets.length ? todaySets.map((set, index) => `<div class="session-item"><span>Serie ${index + 1}</span><strong>${set.weight} kg · ${set.reps} reps · RIR ${set.rir}</strong></div>`).join('') : '<p class="muted">Aún no hay series registradas hoy.</p>'}
+        </div>
+      </article>
+    `;
+  }
+
+  function saveTrainingSet(button) {
+    const card = button.closest('[data-exercise-id]');
+    if (!card) return;
+    const exerciseId = card.dataset.exerciseId;
+    const weight = Number(card.querySelector('[data-field="weight"]')?.value);
+    const reps = Number(card.querySelector('[data-field="reps"]')?.value);
+    const rir = Number(card.querySelector('[data-field="rir"]')?.value);
+
+    if (!exerciseId || !weight || !reps || Number.isNaN(rir)) {
+      state.status = { text: 'Completa peso, repeticiones y RIR para guardar la serie.', type: 'warning' };
+      render();
+      return;
+    }
+
+    const today = todayKey();
+    if (!state.training.logsByDate[today]) {
+      state.training.logsByDate[today] = {};
+    }
+    if (!state.training.logsByDate[today][exerciseId]) {
+      state.training.logsByDate[today][exerciseId] = [];
+    }
+
+    const entry = { weight, reps, rir, loggedAt: new Date().toISOString(), dayId: state.training.selectedDayId };
+    state.training.logsByDate[today][exerciseId].push(entry);
+    state.status = { text: 'Serie guardada. La próxima sesión te mostrará esta referencia como última sesión.', type: 'success' };
+    queueSave();
+    render();
   }
 
   function renderRecipes() {
@@ -1222,6 +2009,16 @@
             ${renderSelectField('dietaryStyle', 'Estilo dietético', dietaryStyles, draft.dietaryStyle, false)}
             ${renderSelectField('goalMode', 'Objetivo', { gain: 'Ganar masa', maintain: 'Mantener', cut: 'Definir' }, draft.goalMode, false)}
             ${renderSelectField('unit', 'Unidades', { metric: 'Métricas', imperial: 'Imperiales' }, draft.unit, false)}
+            <fieldset class="field-group field-group--full">
+              <legend>Vídeos de ejercicios</legend>
+              <p class="muted">Los vídeos cortos en bucle son la opción principal. Si un ejercicio no tiene clip local, se intenta ExerciseDB como respaldo remoto.</p>
+              <label class="input-group"><span>RapidAPI key</span><input name="exerciseMediaApiKey" type="password" placeholder="Introduce tu clave" value="${escapeAttr(state.exerciseMediaConfig.rapidApiKey || '')}"></label>
+              <div class="two-column">
+                ${renderTextField('exerciseMediaApiHost', 'RapidAPI host', state.exerciseMediaConfig.rapidApiHost || defaultExerciseMediaConfig.rapidApiHost)}
+                ${renderTextField('exerciseMediaBaseUrl', 'Base URL', state.exerciseMediaConfig.baseUrl || defaultExerciseMediaConfig.baseUrl)}
+              </div>
+              <p class="muted">Los clips locales se reproducen en bucle, sin controles, y se cachea el respaldo remoto si se usa ExerciseDB.</p>
+            </fieldset>
             <fieldset class="field-group field-group--full"><legend>Restricciones</legend><div class="check-grid">${restrictionsCatalog.map((item) => `<label class="check-item"><input type="checkbox" name="restrictions" value="${item.id}" ${draft.restrictions.includes(item.id) ? 'checked' : ''}><span>${item.label}</span></label>`).join('')}</div></fieldset>
             <div class="field-group field-group--full"><label class="input-group"><span>Nota alimentaria</span><textarea name="notes" rows="3" placeholder="Ej. Entreno por la tarde, prefiero comida más densa...">${escapeHtml(draft.notes || '')}</textarea></label></div>
             <div class="field-group field-group--full form-footer"><button class="btn btn--primary" type="submit">Guardar cambios</button><p class="muted">Tus objetivos se recalculan al guardar y se mantienen en este dispositivo.</p></div>
@@ -1232,29 +2029,152 @@
     `;
   }
 
-  function renderRecipeCreatorModal() {
-    if (!state.recipeDraftOpen) return '';
-    const draft = state.recipeDraft;
+  function renderRecipeDetailModal() {
+    if (!state.selectedRecipeId) return '';
+    const recipe = getRecipeById(state.selectedRecipeId);
+    if (!recipe) return '';
+
     return `
-      <div class="modal-backdrop" role="presentation">
-        <section class="modal glass-panel" role="dialog" aria-modal="true" aria-labelledby="creator-title">
-          <div class="section-heading"><div><p class="eyebrow">Creador de recetas</p><h2 id="creator-title">Añadir receta personalizada</h2></div><button class="icon-btn icon-btn--plain" data-action="close-recipe-creator" aria-label="Cerrar">×</button></div>
-          <form id="recipe-creator-form" class="settings-grid settings-grid--single">
-            ${renderTextField('name', 'Nombre de la receta', draft.name)}
-            ${renderSelectField('mealType', 'Momento del día', { breakfast: 'Desayuno', lunch: 'Comida', dinner: 'Cena', snack: 'Snack' }, draft.mealType, false)}
-            ${renderTextField('category', 'Categoría', draft.category)}
-            ${renderTextField('emoji', 'Emoji', draft.emoji)}
-            ${renderNumberField('prepTime', 'Tiempo de preparación (min)', draft.prepTime, 1, 240)}
-            ${renderTextField('proteinSource', 'Fuente de proteína', draft.proteinSource)}
-            ${renderNumberField('calories', 'Calorías', draft.calories, 50, 2000)}
-            ${renderNumberField('protein', 'Proteína (g)', draft.protein, 1, 200)}
-            ${renderNumberField('carbs', 'Carbohidratos (g)', draft.carbs, 1, 300)}
-            ${renderNumberField('fats', 'Grasas (g)', draft.fats, 1, 100)}
-            <label class="input-group field-group--full"><span>Ingredientes, uno por línea. Usa "nombre | cantidad"</span><textarea name="ingredients" rows="5" placeholder="Pechuga de pollo | 200 g\nArroz | 100 g">${escapeHtml(draft.ingredients)}</textarea></label>
-            <label class="input-group field-group--full"><span>Pasos, uno por línea</span><textarea name="steps" rows="4" placeholder="Cocina el arroz.\nMarca el pollo.\nSirve y disfruta.">${escapeHtml(draft.steps)}</textarea></label>
-            <label class="input-group field-group--full"><span>Notas</span><textarea name="notes" rows="3">${escapeHtml(draft.notes)}</textarea></label>
-            <div class="field-group field-group--full form-footer"><button class="btn btn--primary" type="submit">Guardar receta</button><button class="btn btn--ghost" type="button" data-action="close-recipe-creator">Cancelar</button></div>
-          </form>
+      <div class="modal-backdrop" data-action="close-recipe-detail">
+        <section class="glass-panel modal modal--detail" role="dialog" aria-modal="true" aria-labelledby="recipe-detail-title">
+          <header class="detail-hero" style="background: linear-gradient(155deg, ${recipe.accent[0]}, ${recipe.accent[1]});">
+            <div>
+              <p class="eyebrow">Detalle de receta</p>
+              <h2 id="recipe-detail-title">${escapeHtml(recipe.name)}</h2>
+              <p class="muted">${escapeHtml(recipe.proteinSource)} · ${recipe.prepTime} min · ${recipe.calories} kcal</p>
+            </div>
+            <button class="btn btn--ghost" type="button" data-action="close-recipe-detail">Cerrar</button>
+          </header>
+
+          <div class="detail-body" style="padding: 1rem 1.25rem 1.25rem;">
+            <div class="two-column">
+              <article class="glass-panel section-panel">
+                <h3>Ingredientes</h3>
+                <ul class="ingredients-list">
+                  ${recipe.ingredients.map((ingredient) => `<li><strong>${escapeHtml(ingredient.name)}</strong><span>${escapeHtml(ingredient.amount)}</span></li>`).join('')}
+                </ul>
+              </article>
+
+              <article class="glass-panel section-panel">
+                <h3>Macros</h3>
+                <div class="macro-row macro-row--compact">
+                  <span>${recipe.protein} g proteína</span>
+                  <span>${recipe.carbs} g carbos</span>
+                  <span>${recipe.fats} g grasas</span>
+                  <span>${recipe.calories} kcal</span>
+                </div>
+                <p class="muted">Categorías: ${recipe.categories.map((item) => escapeHtml(item)).join(' · ')}</p>
+                <p class="muted">${escapeHtml(recipe.notes || 'Receta guardada en tu biblioteca local.')}</p>
+                <a class="btn btn--secondary" href="${getRecipeVideoUrl(recipe)}" target="_blank" rel="noopener noreferrer">Ver vídeo / búsqueda</a>
+              </article>
+            </div>
+
+            <article class="glass-panel section-panel">
+              <h3>Preparación</h3>
+              <ol class="detail-steps">
+                ${recipe.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
+              </ol>
+            </article>
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
+  function renderExerciseVideoModal() {
+    if (!state.routineModalOpen) return '';
+    const training = getTrainingRoutineForDate(state.selectedRoutineDate || state.activeDate);
+    const exercises = Array.isArray(training?.exercises) ? training.exercises : [];
+    const selectedExercise = (state.selectedExerciseVideoId && getExerciseById(state.selectedExerciseVideoId)) || exercises[0] || null;
+    const selectedMedia = selectedExercise ? getExerciseMediaDescriptor(selectedExercise) : { kind: 'empty', src: '' };
+    const selectedCacheKey = selectedExercise ? getExerciseMediaCacheKey(selectedExercise) : null;
+    const isRemoteConfigured = Boolean(state.exerciseMediaConfig.enabled && state.exerciseMediaConfig.rapidApiKey);
+    const isLoadingMedia = Boolean(selectedCacheKey && state.exerciseMediaRequests[selectedCacheKey]);
+    const cachedEntry = selectedCacheKey ? state.exerciseMediaCache[selectedCacheKey] : null;
+    const isRemoteMedia = cachedEntry?.kind === 'remote';
+    const isRestDay = Boolean(training?.restDay) || exercises.length === 0;
+
+    return `
+      <div class="modal-backdrop" data-action="close-training-routine">
+        <section class="glass-panel modal modal--routine" role="dialog" aria-modal="true" aria-labelledby="routine-modal-title">
+          <header class="detail-hero detail-hero--video" style="background: linear-gradient(155deg, #0f172a, #111827);">
+            <div>
+              <p class="eyebrow">Rutina de hoy</p>
+              <h2 id="routine-modal-title">${escapeHtml(training?.badge || 'Rutina')}</h2>
+              <p class="muted">${escapeHtml(training?.name || 'Sesión programada para hoy')} · ${escapeHtml(training?.focus || (isRestDay ? 'Recuperación' : 'Entrenamiento'))}</p>
+            </div>
+            <button class="btn btn--ghost" type="button" data-action="close-training-routine">Cerrar</button>
+          </header>
+
+          <div class="routine-modal-layout">
+            <aside class="routine-modal-list">
+              <div class="routine-modal-list__header">
+                <p class="eyebrow">Ejercicios</p>
+                <h3>${isRestDay ? 'Día de recuperación' : `${exercises.length} ejercicios`}</h3>
+                <p class="muted">Toca un ejercicio para ver su vídeo corto en bucle. Si no existe clip local, se usa ExerciseDB como respaldo remoto.</p>
+              </div>
+
+              ${isRestDay ? `
+                <article class="routine-exercise-card is-active">
+                  <strong>${escapeHtml(training?.message || 'Recuperación activa')}</strong>
+                  <span>Hoy toca caminar, movilizar y recuperar.</span>
+                  <small>No hay ejercicios de fuerza programados para esta fecha.</small>
+                </article>
+              ` : exercises.map((exercise) => `
+                <button class="routine-exercise-card ${exercise.id === selectedExercise?.id ? 'is-active' : ''}" type="button" data-action="open-exercise-video" data-exercise-id="${exercise.id}" data-date="${escapeAttr(state.selectedRoutineDate || state.activeDate)}">
+                  <strong>${escapeHtml(exercise.name)}</strong>
+                  <span>${exercise.series} series · ${escapeHtml(exercise.repRange)}</span>
+                  <small>Vídeo/animación asociada</small>
+                </button>
+              `).join('')}
+            </aside>
+
+            <section class="routine-modal-player">
+              <div class="routine-modal-player__header">
+                <div>
+                  <p class="eyebrow">Vista previa</p>
+                  <h3>${selectedExercise ? escapeHtml(selectedExercise.name) : escapeHtml(training?.message || 'Descanso y recuperación')}</h3>
+                  <p class="muted">${selectedExercise ? `${selectedExercise.series} series · ${escapeHtml(selectedExercise.repRange)}` : 'Sin animación asignada en este día.'}</p>
+                </div>
+                ${selectedExercise && selectedMedia.src ? `<a class="btn btn--ghost" href="${selectedMedia.src}" target="_blank" rel="noopener noreferrer">Abrir media</a>` : ''}
+              </div>
+
+              ${selectedExercise ? `
+                ${selectedMedia.kind === 'loading' && isLoadingMedia && !cachedEntry ? `
+                  <div class="exercise-demo-wrap empty-state">
+                    <p class="eyebrow">Cargando vídeo real</p>
+                    <h4>${escapeHtml(selectedExercise.name)}</h4>
+                    <p class="muted">Estamos consultando ExerciseDB para mostrar un respaldo remoto mientras no haya clip local.</p>
+                  </div>
+                ` : `
+                  <div class="exercise-demo-wrap">
+                    ${selectedMedia.kind === 'video' ? `
+                      <video class="exercise-demo" autoplay muted loop playsinline preload="metadata" poster="${escapeAttr(getExerciseLocalFallbackUrl(selectedExercise))}">
+                        <source src="${escapeAttr(selectedMedia.src)}" type="video/mp4">
+                      </video>
+                    ` : `
+                      <img class="exercise-demo" src="${escapeAttr(selectedMedia.src)}" alt="${escapeAttr(selectedExercise.name)}" loading="lazy" decoding="async">
+                    `}
+                  </div>
+                `}
+                <div class="detail-body">
+                  <article class="glass-panel section-panel">
+                    <h4>Notas del ejercicio</h4>
+                    <p class="muted">${escapeHtml(selectedExercise.notes || (selectedMedia.kind === 'video' ? 'Clip local corto en bucle para una reproducción más fluida.' : isRemoteConfigured ? 'Se intentará ExerciseDB como respaldo remoto si falta clip local.' : 'Activa ExerciseDB en ajustes si quieres respaldo remoto adicional.'))}</p>
+                  </article>
+                  <article class="glass-panel section-panel">
+                    <h4>Consejo rápido</h4>
+                    <p class="muted">Mantén la técnica limpia, controla el recorrido y usa el rango de repeticiones como referencia antes de subir carga. ${selectedMedia.kind === 'video' ? 'Este clip local se repite en bucle para una experiencia más ligera.' : isRemoteMedia ? 'Este respaldo viene desde ExerciseDB.' : ''}</p>
+                  </article>
+                </div>
+              ` : `
+                <article class="glass-panel section-panel empty-state">
+                  <h4>${escapeHtml(training?.message || 'Descanso')}</h4>
+                  <p class="muted">Aprovecha el día para recuperar, dormir más y preparar la siguiente sesión.</p>
+                </article>
+              `}
+            </section>
+          </div>
         </section>
       </div>
     `;
@@ -1262,83 +2182,54 @@
 
   function renderOnboardingModal() {
     if (state.profile.completed) return '';
-    const draft = state.onboardingDraft;
-    const step = Math.min(state.onboardingStep, 2);
-
-    const steps = [
-      `
-        <label class="input-group">
-          <span>Nombre</span>
-          <input name="name" type="text" value="${escapeAttr(draft.name || '')}" placeholder="Tu nombre">
-        </label>
-        <label class="input-group">
-          <span>Peso (kg)</span>
-          <input name="weight" type="number" step="0.1" min="30" value="${escapeAttr(draft.weight)}">
-        </label>
-        <label class="input-group">
-          <span>Altura (cm)</span>
-          <input name="height" type="number" step="1" min="120" value="${escapeAttr(draft.height)}">
-        </label>
-      `,
-      `
-        <label class="input-group">
-          <span>Edad</span>
-          <input name="age" type="number" min="16" max="100" value="${escapeAttr(draft.age)}">
-        </label>
-        <label class="input-group">
-          <span>Nivel de actividad</span>
-          <select name="activity">
-            ${Object.entries(activityLevels).map(([value, item]) => `<option value="${value}" ${draft.activity === value ? 'selected' : ''}>${item.label}</option>`).join('')}
-          </select>
-        </label>
-        <label class="input-group">
-          <span>Objetivo</span>
-          <select name="goalMode">
-            <option value="gain" ${draft.goalMode === 'gain' ? 'selected' : ''}>Ganar masa</option>
-            <option value="maintain" ${draft.goalMode === 'maintain' ? 'selected' : ''}>Mantener</option>
-            <option value="cut" ${draft.goalMode === 'cut' ? 'selected' : ''}>Definir</option>
-          </select>
-        </label>
-      `,
-      `
-        <label class="input-group">
-          <span>Estilo dietético</span>
-          <select name="dietaryStyle">
-            ${Object.entries(dietaryStyles).map(([value, label]) => `<option value="${value}" ${draft.dietaryStyle === value ? 'selected' : ''}>${label}</option>`).join('')}
-          </select>
-        </label>
-        <fieldset class="field-group field-group--full">
-          <legend>Restricciones</legend>
-          <div class="check-grid">
-            ${restrictionsCatalog.map((item) => `<label class="check-item"><input type="checkbox" name="restrictions" value="${item.id}" ${draft.restrictions.includes(item.id) ? 'checked' : ''}><span>${item.label}</span></label>`).join('')}
-          </div>
-        </fieldset>
-        <label class="input-group field-group--full">
-          <span>Peso objetivo (kg)</span>
-          <input name="targetWeight" type="number" step="0.1" min="30" value="${escapeAttr(draft.targetWeight)}">
-        </label>
-      `,
-    ];
+    const step = state.onboardingStep;
+    const draft = state.onboardingDraft || createEmptyRecipeDraft();
 
     return `
-      <div class="modal-backdrop modal-backdrop--onboarding" role="presentation">
-        <section class="modal glass-panel modal--onboarding" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
-          <div class="section-heading">
+      <div class="modal-backdrop">
+        <section class="glass-panel modal modal--onboarding" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+          <header class="detail-hero" style="background: linear-gradient(155deg, #0f766e, #1d4ed8);">
             <div>
-              <p class="eyebrow">Onboarding</p>
-              <h2 id="onboarding-title">Configura tu perfil</h2>
+              <p class="eyebrow">Configuración inicial</p>
+              <h2 id="onboarding-title">Vamos a preparar tu perfil</h2>
+              <p class="muted">Solo son 3 pasos y todo queda guardado en tu dispositivo.</p>
             </div>
-            <span class="step-pill">Paso ${step + 1} de 3</span>
-          </div>
-          <form id="onboarding-form" class="settings-grid settings-grid--single">
-            ${steps[step]}
-            <label class="input-group field-group--full">
-              <span>Comentario opcional</span>
-              <textarea name="notes" rows="3" placeholder="Ej. Entreno por la tarde, prefiero comida más densa...">${escapeHtml(draft.notes || '')}</textarea>
-            </label>
+            <span class="step-pill">Paso ${step + 1} / 3</span>
+          </header>
+
+          <form id="onboarding-form" class="detail-body" style="padding: 1rem 1.25rem 1.25rem;">
+            ${step === 0 ? `
+              <div class="two-column">
+                ${renderTextField('name', 'Nombre', draft.name)}
+                ${renderNumberField('age', 'Edad', draft.age, 16, 100)}
+                ${renderNumberField('height', `Altura (${draft.unit === 'metric' ? 'cm' : 'in'})`, draft.height, 120, 230)}
+                ${renderNumberField('weight', `Peso (${draft.unit === 'metric' ? 'kg' : 'lb'})`, draft.weight, 30, 200, 0.1)}
+              </div>
+            ` : step === 1 ? `
+              <div class="two-column">
+                ${renderSelectField('activity', 'Actividad', activityLevels, draft.activity, true)}
+                ${renderSelectField('goalMode', 'Objetivo', { gain: 'Ganar masa', maintain: 'Mantener', cut: 'Definir' }, draft.goalMode, false)}
+                ${renderSelectField('dietaryStyle', 'Estilo dietético', dietaryStyles, draft.dietaryStyle, false)}
+                ${renderSelectField('unit', 'Unidades', { metric: 'Métricas', imperial: 'Imperiales' }, draft.unit, false)}
+                ${renderNumberField('targetWeight', 'Peso objetivo', draft.targetWeight, 30, 200, 0.1)}
+              </div>
+            ` : `
+              <fieldset class="field-group field-group--full">
+                <legend>Restricciones</legend>
+                <div class="check-grid">
+                  ${restrictionsCatalog.map((item) => `<label class="check-item"><input type="checkbox" name="restrictions" value="${item.id}" ${draft.restrictions.includes(item.id) ? 'checked' : ''}><span>${item.label}</span></label>`).join('')}
+                </div>
+              </fieldset>
+              <div class="field-group field-group--full">
+                <label class="input-group"><span>Notas</span><textarea name="notes" rows="4" placeholder="Entreno por la tarde, prefiero comidas más densas...">${escapeHtml(draft.notes || '')}</textarea></label>
+              </div>
+            `}
+
             <div class="field-group field-group--full form-footer">
-              ${step > 0 ? '<button class="btn btn--ghost" type="button" data-action="previous-step">Atrás</button>' : '<span></span>'}
-              <button class="btn btn--primary" type="submit">${step === 2 ? 'Crear mi plan' : 'Siguiente'}</button>
+              <div class="inline-actions">
+                ${step > 0 ? '<button class="btn btn--ghost" type="button" data-action="previous-step">Anterior</button>' : ''}
+              </div>
+              <button class="btn btn--primary" type="submit">${step < 2 ? 'Siguiente' : 'Terminar configuración'}</button>
             </div>
           </form>
         </section>
@@ -1346,85 +2237,70 @@
     `;
   }
 
-  function renderRecipeDetailModal() {
-    const recipe = getRecipeById(state.selectedRecipeId);
-    if (!recipe) return '';
+  function renderRecipeCreatorModal() {
+    if (!state.recipeDraftOpen) return '';
+    const draft = state.recipeDraft || createEmptyRecipeDraft();
+
     return `
-      <div class="modal-backdrop" role="presentation">
-        <section class="modal glass-panel modal--detail" role="dialog" aria-modal="true" aria-labelledby="recipe-title">
-          <div class="detail-hero" style="background: linear-gradient(155deg, ${recipe.accent[0]}, ${recipe.accent[1]});"><div><p class="eyebrow">${MEAL_LABELS[recipe.mealType] || 'Snack'}</p><h2 id="recipe-title">${escapeHtml(recipe.name)}</h2><p>${escapeHtml(recipe.proteinSource)} · ${recipe.prepTime} min · ${recipe.calories} kcal</p></div><button class="icon-btn icon-btn--plain" data-action="close-recipe-detail" aria-label="Cerrar">×</button></div>
-          <div class="detail-body">
-            <div class="macro-row macro-row--detail"><span>${recipe.protein} g proteína</span><span>${recipe.carbs} g carbohidratos</span><span>${recipe.fats} g grasas</span><span>${recipe.sections.join(' · ')}</span></div>
-            <p class="muted">${escapeHtml(recipe.notes)}</p>
-            <div class="two-column"><section><h3>Ingredientes</h3><ul class="detail-list">${recipe.ingredients.map((ingredient) => `<li><strong>${escapeHtml(ingredient.name)}</strong><span>${escapeHtml(ingredient.amount)}</span></li>`).join('')}</ul></section><section><h3>Preparación</h3><ol class="detail-steps">${recipe.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol></section></div>
-          </div>
+      <div class="modal-backdrop" data-action="close-recipe-creator">
+        <section class="glass-panel modal modal--detail" role="dialog" aria-modal="true" aria-labelledby="recipe-creator-title">
+          <header class="detail-hero" style="background: linear-gradient(155deg, #334155, #111827);">
+            <div>
+              <p class="eyebrow">Nueva receta</p>
+              <h2 id="recipe-creator-title">Guardar receta personalizada</h2>
+              <p class="muted">Añade una receta local con ingredientes, pasos y macros.</p>
+            </div>
+            <button class="btn btn--ghost" type="button" data-action="close-recipe-creator">Cerrar</button>
+          </header>
+
+          <form id="recipe-creator-form" class="detail-body" style="padding: 1rem 1.25rem 1.25rem;">
+            <div class="two-column">
+              <label class="input-group"><span>Nombre</span><input name="name" type="text" value="${escapeAttr(draft.name)}" placeholder="Pasta con pollo y yogur"></label>
+              ${renderSelectField('mealType', 'Tipo de comida', { breakfast: 'Desayuno', lunch: 'Almuerzo', prepost: 'Pre/Post Entreno', dinner: 'Cena', nightSnack: 'Snack nocturno' }, draft.mealType, false)}
+              ${renderSelectField('category', 'Categoría', { 'Comidas Rápidas': 'Comidas Rápidas', 'Desayunos Altos en Proteína': 'Desayunos Altos en Proteína', 'Cenas Ligeras': 'Cenas Ligeras', 'Post-Entrenamiento': 'Post-Entrenamiento' }, draft.category, false)}
+              <label class="input-group"><span>Emoji</span><input name="emoji" type="text" maxlength="2" value="${escapeAttr(draft.emoji)}" placeholder="🍽️"></label>
+              ${renderNumberField('prepTime', 'Tiempo de preparación (min)', draft.prepTime, 5, 180)}
+              <label class="input-group"><span>Fuente proteica</span><input name="proteinSource" type="text" value="${escapeAttr(draft.proteinSource)}" placeholder="Pollo, huevo, atún..."></label>
+              ${renderNumberField('calories', 'Kcal', draft.calories, 100, 1500)}
+              ${renderNumberField('protein', 'Proteína (g)', draft.protein, 0, 120)}
+              ${renderNumberField('carbs', 'Carbos (g)', draft.carbs, 0, 200)}
+              ${renderNumberField('fats', 'Grasas (g)', draft.fats, 0, 100)}
+            </div>
+
+            <div class="two-column">
+              <label class="input-group"><span>Ingredientes</span><textarea name="ingredients" rows="8" placeholder="Ingrediente | cantidad\nAvena | 80 g\nLeche | 250 ml">${escapeHtml(draft.ingredients)}</textarea></label>
+              <label class="input-group"><span>Pasos</span><textarea name="steps" rows="8" placeholder="Paso 1\nPaso 2\nPaso 3">${escapeHtml(draft.steps)}</textarea></label>
+            </div>
+
+            <div class="field-group field-group--full">
+              <label class="input-group"><span>Notas</span><textarea name="notes" rows="3" placeholder="Opcional">${escapeHtml(draft.notes)}</textarea></label>
+            </div>
+
+            <div class="field-group field-group--full form-footer">
+              <button class="btn btn--ghost" type="button" data-action="close-recipe-creator">Cancelar</button>
+              <button class="btn btn--primary" type="submit">Guardar receta</button>
+            </div>
+          </form>
         </section>
       </div>
     `;
   }
 
-  function buildMilestones() {
-    const entries = state.history.slice(-14);
-    const avgProtein = entries.length ? entries.reduce((sum, item) => sum + (item.protein || 0), 0) / entries.length : 0;
-    const latestWeight = [...entries].reverse().find((item) => item.weight)?.weight || state.profile.weight;
-    return [
-      { icon: '🥇', title: 'Proteína consistente', text: 'Mantén media semanal por encima del objetivo para crecer más fácil.', done: avgProtein >= state.goals.protein * 0.9 },
-      { icon: '📈', title: 'Peso en progreso', text: 'Tu tendencia de peso debería subir poco a poco, sin saltos bruscos.', done: Number(latestWeight) >= Number(state.profile.weight) },
-      { icon: '🗂️', title: 'Plan local-first', text: 'Tus recetas, planes y ajustes viven en tu dispositivo y funcionan offline.', done: true },
-    ];
-  }
-
-  function buildSvgChart(series, target, color, inverted = false) {
-    const width = 520;
-    const height = 180;
-    const padding = 20;
-    const values = series.length ? series : [0];
-    const max = Math.max(target * 1.25, ...values, 1);
-    const min = inverted ? Math.min(target * 0.85, ...values, target * 0.7) : 0;
-    const range = Math.max(1, max - min);
-    const points = values.map((value, index) => {
-      const x = padding + ((width - padding * 2) * index) / Math.max(1, values.length - 1);
-      const normalized = (value - min) / range;
-      const y = height - padding - normalized * (height - padding * 2);
-      return { x, y, value };
-    });
-    const line = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
-    const targetY = height - padding - (((target - min) / range) * (height - padding * 2));
-    const gradientId = `gradient-${color.replace('#', '')}`;
-    return `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Gráfico de progreso"><defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.6"></stop><stop offset="100%" stop-color="${color}" stop-opacity="0.04"></stop></linearGradient></defs><line x1="20" y1="${targetY.toFixed(1)}" x2="500" y2="${targetY.toFixed(1)}" stroke="${color}" stroke-dasharray="4 6" opacity="0.45"></line><path d="${line}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path><path d="${line} L 500 160 L 20 160 Z" fill="url(#${gradientId})"></path>${points.map((point, index) => `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3.5" fill="#ffffff" stroke="${color}" stroke-width="2"><title>${series[index]}</title></circle>`).join('')}</svg>`;
-  }
-
-  function exportState() {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `plan-comida-${todayKey()}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    state.status = { text: 'Exportación generada correctamente.', type: 'success' };
-    render();
-  }
-
-  async function installApp() {
-    if (!state.installPrompt) {
-      state.status = { text: 'La instalación no está disponible en este momento.', type: 'warning' };
-      render();
-      return;
+  function getTrainingRoutineForDate(date = todayKey()) {
+    const normalized = new Date(`${date}T12:00:00`);
+    const day = normalized.getDay();
+    if (day >= 1 && day <= 5) {
+      return state.training.days[day - 1] || state.training.days[0];
     }
-    state.installPrompt.prompt();
-    const choice = await state.installPrompt.userChoice;
-    state.status = choice.outcome === 'accepted' ? { text: 'Gracias por instalar la app.', type: 'success' } : { text: 'La instalación fue pospuesta.', type: 'info' };
-    state.installPrompt = null;
-    render();
-  }
-
-  function registerServiceWorker() {
-    const isLocalDev = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-    if (!('serviceWorker' in navigator) || isLocalDev) return;
-    navigator.serviceWorker.register('/sw.js').catch((error) => {
-      console.warn('No se pudo registrar el service worker.', error);
-    });
+    return {
+      id: day === 6 ? 'recovery-sat' : 'recovery-sun',
+      badge: day === 6 ? 'Sábado' : 'Domingo',
+      name: 'Descanso',
+      focus: 'Recuperación',
+      message: day === 6 ? 'Recuperación activa' : 'Descanso y preparación',
+      restDay: true,
+      exercises: [],
+    };
   }
 
   function openDB() {
@@ -1481,9 +2357,10 @@
     return null;
   }
 
+  let saveTimeout = null;
   function queueSave() {
-    clearTimeout(saveQueue);
-    saveQueue = setTimeout(async () => {
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(async () => {
       state.lastSync = new Date().toISOString();
       try {
         const snapshot = serializeState();
@@ -1496,7 +2373,7 @@
   }
 
   function serializeState() {
-    const { installPrompt, ...persisted } = state;
+    const { installPrompt, exerciseMediaRequests, ...persisted } = state;
     return clone(persisted);
   }
 
@@ -1587,8 +2464,238 @@
     return 'Despensa';
   }
 
-  function createEmptyRecipeDraft() {
-    return { name: '', mealType: 'lunch', category: 'Comidas Rápidas', emoji: '🍽️', prepTime: 15, proteinSource: '', calories: 500, protein: 30, carbs: 40, fats: 15, ingredients: '', steps: '', notes: '' };
+  function buildYouTubeSearchUrl(query) {
+    return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  }
+
+  function getExerciseById(exerciseId) {
+    if (!exerciseId) return null;
+    for (const day of state.training.days || []) {
+      const match = (day.exercises || []).find((exercise) => exercise.id === exerciseId);
+      if (match) return match;
+    }
+    return null;
+  }
+
+  function normalizeExerciseMediaConfig(config) {
+    const incoming = config && typeof config === 'object' ? config : {};
+    return {
+      ...clone(defaultExerciseMediaConfig),
+      ...incoming,
+      enabled: Boolean(incoming.rapidApiKey) ? incoming.enabled !== false : Boolean(incoming.enabled),
+      rapidApiKey: String(incoming.rapidApiKey || '').trim(),
+      rapidApiHost: String(incoming.rapidApiHost || defaultExerciseMediaConfig.rapidApiHost).trim(),
+      baseUrl: String(incoming.baseUrl || defaultExerciseMediaConfig.baseUrl).trim().replace(/\/$/, ''),
+    };
+  }
+
+  function sanitizeExerciseMediaCache(cache) {
+    if (!cache || typeof cache !== 'object') return {};
+    return Object.entries(cache).reduce((acc, [key, value]) => {
+      if (!value || typeof value !== 'object' || !value.src) return acc;
+      acc[key] = {
+        src: String(value.src),
+        kind: value.kind === 'remote' || value.kind === 'video' ? value.kind : 'local',
+        updatedAt: Number(value.updatedAt) || Date.now(),
+        label: String(value.label || ''),
+      };
+      return acc;
+    }, {});
+  }
+
+  function getExerciseMediaCacheKey(exercise) {
+    return exercise?.id || normalize(exercise?.name || 'exercise');
+  }
+
+  function getExerciseMediaQuery(exercise) {
+    const queryMap = {
+      'bench-barbell': 'barbell bench press',
+      'incline-db-press': 'incline dumbbell press',
+      'flat-db-press': 'dumbbell bench press',
+      'shoulder-press': 'shoulder press',
+      'triceps-pushdown': 'triceps pushdown',
+      'barbell-row': 'barbell row',
+      'lat-pulldown': 'lat pulldown',
+      'low-pulley-row': 'seated cable row',
+      'facepull': 'face pull',
+      'alt-biceps-curl': 'biceps curl',
+      'hammer-curl': 'hammer curl',
+      'back-squat': 'barbell squat',
+      'leg-press': 'leg press',
+      'bulgarian-split-squat': 'bulgarian split squat',
+      'leg-extension': 'leg extension',
+      'romanian-deadlift': 'romanian deadlift',
+      'conventional-deadlift': 'deadlift',
+      'seated-leg-curl': 'seated leg curl',
+      'lying-leg-curl': 'lying leg curl',
+      'standing-calf-raise': 'standing calf raise',
+      'seated-calf-raise': 'seated calf raise',
+      'lateral-raise': 'lateral raise',
+    };
+    return queryMap[exercise?.id] || exercise?.videoQuery || exercise?.name || '';
+  }
+
+  function getExerciseLocalVideoUrl(exercise) {
+    const assetMap = {
+      'bench-barbell': 'real/bench-press.webm',
+      'flat-db-press': 'real/bench-press.webm',
+      'incline-db-press': 'real/incline-press.webm',
+      'shoulder-press': 'real/shoulder-press.webm',
+      'back-squat': 'real/squat.webm',
+      'leg-press': 'real/squat.webm',
+      'bulgarian-split-squat': 'real/squat.webm',
+      'leg-extension': 'real/squat.webm',
+      'romanian-deadlift': 'real/deadlift.webm',
+      'conventional-deadlift': 'real/deadlift.webm',
+      'seated-leg-curl': 'real/deadlift.webm',
+      'lying-leg-curl': 'real/deadlift.webm',
+      'triceps-pushdown': 'real/bench-press.webm',
+      'barbell-row': 'real/bent-over-row.webm',
+      'lat-pulldown': 'real/bent-over-row.webm',
+      'low-pulley-row': 'real/bent-over-row.webm',
+      'facepull': 'real/bent-over-row.webm',
+      'alt-biceps-curl': 'real/bent-over-row.webm',
+      'hammer-curl': 'real/bent-over-row.webm',
+      'standing-calf-raise': 'real/squat.webm',
+      'seated-calf-raise': 'real/squat.webm',
+      'lateral-raise': 'real/shoulder-press.webm',
+    };
+    const assetName = assetMap[exercise?.id];
+    return assetName ? `img/exercises/videos/${assetName}` : '';
+  }
+
+  function buildExerciseDbSearchUrl(query) {
+    const baseUrl = state.exerciseMediaConfig.baseUrl || defaultExerciseMediaConfig.baseUrl;
+    return `${baseUrl.replace(/\/$/, '')}/exercises/name/${encodeURIComponent(query)}`;
+  }
+
+  function getExerciseLocalFallbackUrl(exercise) {
+    const assetMap = {
+      'bench-barbell': 'push.svg',
+      'incline-db-press': 'push.svg',
+      'flat-db-press': 'push.svg',
+      'shoulder-press': 'push.svg',
+      'triceps-pushdown': 'push.svg',
+      'barbell-row': 'pull.svg',
+      'lat-pulldown': 'pull.svg',
+      'low-pulley-row': 'pull.svg',
+      'facepull': 'pull.svg',
+      'alt-biceps-curl': 'pull.svg',
+      'hammer-curl': 'pull.svg',
+      'back-squat': 'squat.svg',
+      'leg-press': 'squat.svg',
+      'bulgarian-split-squat': 'squat.svg',
+      'leg-extension': 'squat.svg',
+      'romanian-deadlift': 'hinge.svg',
+      'conventional-deadlift': 'hinge.svg',
+      'seated-leg-curl': 'hinge.svg',
+      'standing-calf-raise': 'calves.svg',
+      'seated-calf-raise': 'calves.svg',
+      'lateral-raise': 'accessory.svg',
+    };
+    const assetName = assetMap[exercise?.id] || 'accessory.svg';
+    return `img/exercises/${assetName}`;
+  }
+
+  function getExerciseMediaDescriptor(exercise) {
+    const cacheKey = getExerciseMediaCacheKey(exercise);
+    const localVideoUrl = getExerciseLocalVideoUrl(exercise);
+    if (localVideoUrl) {
+      return {
+        src: localVideoUrl,
+        kind: 'video',
+        poster: getExerciseLocalFallbackUrl(exercise),
+        label: exercise?.name || '',
+      };
+    }
+
+    const cached = state.exerciseMediaCache[cacheKey];
+    const ttl = 1000 * 60 * 60 * 24 * 7;
+    if (cached && cached.src && cached.kind === 'remote' && (Date.now() - cached.updatedAt) < ttl) {
+      return cached;
+    }
+    if (cached && cached.src && cached.kind !== 'remote') {
+      return cached;
+    }
+    if (state.exerciseMediaConfig.enabled && state.exerciseMediaConfig.rapidApiKey) {
+      return { src: '', kind: 'loading', label: String(exercise?.name || '') };
+    }
+    return {
+      src: getExerciseLocalFallbackUrl(exercise),
+      kind: 'image',
+      label: String(exercise?.name || ''),
+    };
+  }
+
+  function getExerciseMediaUrl(exercise) {
+    return getExerciseMediaDescriptor(exercise).src;
+  }
+
+  async function requestExerciseMedia(exercise) {
+    if (!exercise) return null;
+    const config = state.exerciseMediaConfig;
+    if (!config.enabled || !config.rapidApiKey) return null;
+    const cacheKey = getExerciseMediaCacheKey(exercise);
+    if (getExerciseLocalVideoUrl(exercise)) return null;
+    const existing = state.exerciseMediaCache[cacheKey];
+    const ttl = 1000 * 60 * 60 * 24 * 7;
+    if (existing && existing.kind === 'remote' && (Date.now() - existing.updatedAt) < ttl) {
+      return existing;
+    }
+    if (state.exerciseMediaRequests[cacheKey]) return state.exerciseMediaRequests[cacheKey];
+
+    const promise = (async () => {
+      const query = getExerciseMediaQuery(exercise);
+      if (!query) {
+        const fallbackEntry = { src: getExerciseLocalFallbackUrl(exercise), kind: 'fallback', updatedAt: Date.now(), label: String(exercise.name || '') };
+        state.exerciseMediaCache[cacheKey] = fallbackEntry;
+        queueSave();
+        return fallbackEntry;
+      }
+      const response = await fetch(buildExerciseDbSearchUrl(query), {
+        headers: {
+          'X-RapidAPI-Key': config.rapidApiKey,
+          'X-RapidAPI-Host': config.rapidApiHost || defaultExerciseMediaConfig.rapidApiHost,
+        },
+      });
+      if (!response.ok) throw new Error(`ExerciseDB error: ${response.status}`);
+      const payload = await response.json();
+      const first = Array.isArray(payload) ? payload[0] : payload;
+      const gifUrl = first?.gifUrl || first?.gif_url || first?.gif || first?.image || null;
+      if (!gifUrl) {
+        const fallbackEntry = { src: getExerciseLocalFallbackUrl(exercise), kind: 'fallback', updatedAt: Date.now(), label: String(first?.name || exercise.name || '') };
+        state.exerciseMediaCache[cacheKey] = fallbackEntry;
+        queueSave();
+        return fallbackEntry;
+      }
+      const entry = { src: String(gifUrl), kind: 'remote', updatedAt: Date.now(), label: String(first?.name || exercise.name || '') };
+      state.exerciseMediaCache[cacheKey] = entry;
+      queueSave();
+      return entry;
+    })().catch((error) => {
+      console.warn('No se pudo cargar ExerciseDB, se usará fallback local.', error);
+      const fallbackEntry = { src: getExerciseLocalFallbackUrl(exercise), kind: 'fallback', updatedAt: Date.now(), label: String(exercise.name || '') };
+      state.exerciseMediaCache[cacheKey] = fallbackEntry;
+      queueSave();
+      return fallbackEntry;
+    }).finally(() => {
+      delete state.exerciseMediaRequests[cacheKey];
+    });
+
+    state.exerciseMediaRequests[cacheKey] = promise;
+    return promise;
+  }
+
+  function primeExerciseMedia(exercise) {
+    if (!exercise) return;
+    if (getExerciseLocalVideoUrl(exercise)) return;
+    void requestExerciseMedia(exercise).then((result) => {
+      if (result) render();
+    });
+  }
+
+  function getRecipeVideoUrl(recipe) {
+    return recipe.videoUrl || buildYouTubeSearchUrl(`${recipe.name} receta preparación`);
   }
 
   function announce(message) {

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" role="img" aria-labelledby="title desc">
+  <title id="title">Silueta humana de tracción</title>
+  <desc id="desc">Figura humana estilizada realizando un remo con torso inclinado.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="450" rx="30" fill="url(#bg)"/>
+  <g opacity="0.14" stroke="#cbd5e1" stroke-width="2">
+    <path d="M72 332h656"/>
+    <path d="M120 286h560"/>
+  </g>
+  <g transform="translate(170 80)">
+    <ellipse cx="160" cy="292" rx="96" ry="20" fill="#0b1220" opacity="0.55"/>
+    <circle cx="168" cy="72" r="32" fill="#e2e8f0">
+      <animate attributeName="cy" values="72;68;72" dur="1.6s" repeatCount="indefinite"/>
+    </circle>
+    <path d="M150 100c-8 24-6 48 4 70l14 32c4 10 18 10 22 0l12-30c6-14 14-24 28-30l38-18c10-4 14-16 8-25l-10-14c-6-9-19-12-29-6l-38 20c-11 6-20 4-28-6l-8-10c-6-8-22-7-27 1z" fill="#e2e8f0">
+      <animate attributeName="d" values="M150 100c-8 24-6 48 4 70l14 32c4 10 18 10 22 0l12-30c6-14 14-24 28-30l38-18c10-4 14-16 8-25l-10-14c-6-9-19-12-29-6l-38 20c-11 6-20 4-28-6l-8-10c-6-8-22-7-27 1z;M150 104c-6 22-4 42 6 62l14 34c4 10 18 10 22 0l12-30c8-14 16-22 30-28l40-16c10-4 14-16 8-25l-10-14c-6-9-19-12-29-6l-38 20c-11 6-20 4-28-6l-8-10c-6-8-22-7-27 1z;M150 100c-8 24-6 48 4 70l14 32c4 10 18 10 22 0l12-30c6-14 14-24 28-30l38-18c10-4 14-16 8-25l-10-14c-6-9-19-12-29-6l-38 20c-11 6-20 4-28-6l-8-10c-6-8-22-7-27 1z" dur="1.6s" repeatCount="indefinite"/>
+    </path>
+    <path d="M122 172c24-4 42 2 58 18" stroke="#0ea5e9" stroke-width="14" stroke-linecap="round" fill="none">
+      <animate attributeName="d" values="M122 172c24-4 42 2 58 18;M122 168c26 4 44 10 60 24;M122 172c24-4 42 2 58 18" dur="1.6s" repeatCount="indefinite"/>
+    </path>
+    <path d="M184 172c16 16 34 24 58 18" stroke="#34d399" stroke-width="14" stroke-linecap="round" fill="none">
+      <animate attributeName="d" values="M184 172c16 16 34 24 58 18;M184 168c16 18 36 26 58 24;M184 172c16 16 34 24 58 18" dur="1.6s" repeatCount="indefinite"/>
+    </path>
+    <path d="M126 170l-22 62" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+    <path d="M242 170l32 58" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+    <path d="M208 212l-20 72" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+    <rect x="88" y="232" width="176" height="16" rx="8" fill="url(#bar)">
+      <animate attributeName="x" values="88;82;88" dur="1.6s" repeatCount="indefinite"/>
+    </rect>
+    <circle cx="88" cy="240" r="14" fill="#e2e8f0"/>
+    <circle cx="264" cy="240" r="14" fill="#e2e8f0"/>
+  </g>
+  <text x="50%" y="392" text-anchor="middle" fill="#e2e8f0" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="700">Tracción · silueta humana local</text>
+</svg>

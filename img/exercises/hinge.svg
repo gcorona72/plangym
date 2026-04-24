@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" role="img" aria-labelledby="title desc">
+  <title id="title">Silueta humana de bisagra</title>
+  <desc id="desc">Figura humana estilizada realizando un peso muerto con la espalda inclinada.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="450" rx="30" fill="url(#bg)"/>
+  <g opacity="0.14" stroke="#cbd5e1" stroke-width="2">
+    <path d="M72 332h656"/>
+    <path d="M120 286h560"/>
+  </g>
+  <g transform="translate(180 82)">
+    <ellipse cx="160" cy="292" rx="94" ry="20" fill="#0b1220" opacity="0.55"/>
+    <circle cx="118" cy="70" r="32" fill="#e2e8f0">
+      <animate attributeName="cy" values="70;66;70" dur="1.8s" repeatCount="indefinite"/>
+    </circle>
+    <path d="M112 102c2 22 10 42 24 60l16 20c10 12 14 28 12 44l-6 34c-2 12 8 22 20 22h18c12 0 22-10 20-22l-6-34c-2-16 2-32 12-44l20-24c12-14 14-32 6-48l-8-16c-6-12-20-17-33-13l-22 8c-11 4-24 2-34-6l-14-10c-10-8-25-5-31 6z" fill="#e2e8f0">
+      <animate attributeName="d" values="M112 102c2 22 10 42 24 60l16 20c10 12 14 28 12 44l-6 34c-2 12 8 22 20 22h18c12 0 22-10 20-22l-6-34c-2-16 2-32 12-44l20-24c12-14 14-32 6-48l-8-16c-6-12-20-17-33-13l-22 8c-11 4-24 2-34-6l-14-10c-10-8-25-5-31 6z;M112 108c4 20 14 38 28 54l16 20c8 10 12 24 10 38l-6 36c-2 11 8 21 20 21h18c12 0 22-10 20-21l-6-36c-2-14 2-28 10-38l20-24c10-12 12-28 6-42l-8-16c-6-12-20-17-33-13l-22 8c-11 4-24 2-34-6l-14-10c-10-8-25-5-31 6z;M112 102c2 22 10 42 24 60l16 20c10 12 14 28 12 44l-6 34c-2 12 8 22 20 22h18c12 0 22-10 20-22l-6-34c-2-16 2-32 12-44l20-24c12-14 14-32 6-48l-8-16c-6-12-20-17-33-13l-22 8c-11 4-24 2-34-6l-14-10c-10-8-25-5-31 6z" dur="1.8s" repeatCount="indefinite"/>
+    </path>
+    <path d="M98 162l-34 66" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+    <path d="M136 164l26 70" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+    <path d="M140 194l40 64" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>
+    <path d="M120 200c18 8 34 8 52 0" stroke="#0ea5e9" stroke-width="14" stroke-linecap="round" fill="none">
+      <animate attributeName="d" values="M120 200c18 8 34 8 52 0;M120 206c18 10 34 10 52 0;M120 200c18 8 34 8 52 0" dur="1.8s" repeatCount="indefinite"/>
+    </path>
+    <rect x="86" y="236" width="168" height="16" rx="8" fill="url(#bar)">
+      <animate attributeName="x" values="86;78;86" dur="1.8s" repeatCount="indefinite"/>
+    </rect>
+    <circle cx="86" cy="244" r="14" fill="#e2e8f0"/>
+    <circle cx="254" cy="244" r="14" fill="#e2e8f0"/>
+  </g>
+  <text x="50%" y="392" text-anchor="middle" fill="#e2e8f0" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="700">Bisagra · silueta humana local</text>
+</svg>

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" role="img" aria-labelledby="title desc">
+  <title id="title">Silueta humana de empuje</title>
+  <desc id="desc">Figura humana estilizada realizando un press por encima de la cabeza.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="800" height="450" rx="30" fill="url(#bg)"/>
+  <g opacity="0.14" stroke="#cbd5e1" stroke-width="2">
+    <path d="M72 332h656"/>
+    <path d="M120 284h560"/>
+  </g>
+  <g transform="translate(190 76)">
+    <ellipse cx="138" cy="292" rx="88" ry="20" fill="#0b1220" opacity="0.55"/>
+    <g filter="url(#glow)">
+      <rect x="72" y="50" width="14" height="170" rx="7" fill="#e2e8f0" opacity="0.8" transform="rotate(-20 79 135)">
+        <animateTransform attributeName="transform" type="rotate" values="-20 79 135;-18 79 135;-20 79 135" dur="1.7s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="190" y="50" width="14" height="170" rx="7" fill="#e2e8f0" opacity="0.8" transform="rotate(20 197 135)">
+        <animateTransform attributeName="transform" type="rotate" values="20 197 135;18 197 135;20 197 135" dur="1.7s" repeatCount="indefinite"/>
+      </rect>
+      <circle cx="135" cy="62" r="32" fill="#e2e8f0">
+        <animate attributeName="cy" values="62;58;62" dur="1.7s" repeatCount="indefinite"/>
+      </circle>
+      <path d="M112 94c10 16 16 34 18 56l6 58c2 16 24 18 30 2l8-34c3-16 6-28 16-44 6-10 20-14 30-8l32 18c10 6 23 2 29-8l10-16c6-9 2-21-8-25l-48-20c-16-7-27-18-34-34l-8-16c-6-13-22-18-34-10l-28 18c-10 6-14 20-11 32z" fill="#e2e8f0">
+        <animate attributeName="d" values="M112 94c10 16 16 34 18 56l6 58c2 16 24 18 30 2l8-34c3-16 6-28 16-44 6-10 20-14 30-8l32 18c10 6 23 2 29-8l10-16c6-9 2-21-8-25l-48-20c-16-7-27-18-34-34l-8-16c-6-13-22-18-34-10l-28 18c-10 6-14 20-11 32z;M112 98c8 13 13 28 15 46l6 62c2 15 24 18 30 2l8-34c3-16 9-28 19-42 6-9 18-13 28-9l34 16c11 5 24 1 30-10l10-16c5-9 2-20-8-25l-48-20c-16-7-27-18-34-34l-8-16c-6-13-22-18-34-10l-28 18c-10 6-14 20-10 32z;M112 94c10 16 16 34 18 56l6 58c2 16 24 18 30 2l8-34c3-16 6-28 16-44 6-10 20-14 30-8l32 18c10 6 23 2 29-8l10-16c6-9 2-21-8-25l-48-20c-16-7-27-18-34-34l-8-16c-6-13-22-18-34-10l-28 18c-10 6-14 20-11 32z" dur="1.7s" repeatCount="indefinite"/>
+      </path>
+      <path d="M94 170c14-14 28-20 44-18" stroke="#0ea5e9" stroke-width="14" stroke-linecap="round" fill="none">
+        <animate attributeName="d" values="M94 170c14-14 28-20 44-18;M94 166c16-10 30-14 46-12;M94 170c14-14 28-20 44-18" dur="1.7s" repeatCount="indefinite"/>
+      </path>
+      <path d="M176 170c18-2 32 4 44 18" stroke="#34d399" stroke-width="14" stroke-linecap="round" fill="none">
+        <animate attributeName="d" values="M176 170c18-2 32 4 44 18;M176 166c16-10 30-14 46-12;M176 170c18-2 32 4 44 18" dur="1.7s" repeatCount="indefinite"/>
+      </path>
+      <rect x="60" y="16" width="164" height="16" rx="8" fill="url(#bar)">
+        <animate attributeName="y" values="16;8;16" dur="1.7s" repeatCount="indefinite"/>
+      </rect>
+      <circle cx="60" cy="24" r="14" fill="#e2e8f0"/>
+      <circle cx="224" cy="24" r="14" fill="#e2e8f0"/>
+    </g>
+  </g>
+  <text x="50%" y="392" text-anchor="middle" fill="#e2e8f0" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="700">Empuje · silueta humana local</text>
+</svg>

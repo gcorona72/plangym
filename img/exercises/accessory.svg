@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" role="img" aria-labelledby="title desc">
+  <title id="title">Silueta humana de accesorios</title>
+  <desc id="desc">Figura humana estilizada realizando elevaciones laterales o curls.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="450" rx="30" fill="url(#bg)"/>
+  <g opacity="0.14" stroke="#cbd5e1" stroke-width="2">
+    <path d="M72 332h656"/>
+    <path d="M120 286h560"/>
+    <path d="M170 242h460"/>
+  </g>
+  <g transform="translate(184 82)">
+    <ellipse cx="156" cy="292" rx="88" ry="20" fill="#0b1220" opacity="0.55"/>
+    <circle cx="142" cy="66" r="30" fill="#e2e8f0">
+      <animate attributeName="cy" values="66;62;66" dur="1.3s" repeatCount="indefinite"/>
+    </circle>
+    <path d="M124 98c10 16 14 34 14 58v34c0 16 12 28 28 28h20c16 0 28-12 28-28v-34c0-22 4-40 14-56l8-12c6-9 2-21-8-26l-16-8c-14-7-30-7-44 0l-18 8c-10 5-14 17-8 26z" fill="#e2e8f0">
+      <animate attributeName="d" values="M124 98c10 16 14 34 14 58v34c0 16 12 28 28 28h20c16 0 28-12 28-28v-34c0-22 4-40 14-56l8-12c6-9 2-21-8-26l-16-8c-14-7-30-7-44 0l-18 8c-10 5-14 17-8 26z;M124 102c8 14 12 30 12 52v38c0 16 12 28 28 28h20c16 0 28-12 28-28v-38c0-18 4-34 14-50l8-12c6-9 2-21-8-26l-16-8c-14-7-30-7-44 0l-18 8c-10 5-14 17-8 26z;M124 98c10 16 14 34 14 58v34c0 16 12 28 28 28h20c16 0 28-12 28-28v-34c0-22 4-40 14-56l8-12c6-9 2-21-8-26l-16-8c-14-7-30-7-44 0l-18 8c-10 5-14 17-8 26z" dur="1.3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M116 158c-10 24-24 40-42 50" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round" fill="none">
+      <animate attributeName="d" values="M116 158c-10 24-24 40-42 50;M116 156c-8 22-22 36-40 44;M116 158c-10 24-24 40-42 50" dur="1.3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M194 158c14 24 28 40 46 50" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round" fill="none">
+      <animate attributeName="d" values="M194 158c14 24 28 40 46 50;M194 156c12 22 26 36 44 44;M194 158c14 24 28 40 46 50" dur="1.3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M138 188c16 10 32 16 48 16s32-6 48-16" stroke="#8b5cf6" stroke-width="14" stroke-linecap="round" fill="none">
+      <animate attributeName="d" values="M138 188c16 10 32 16 48 16s32-6 48-16;M138 190c16 14 32 20 48 20s32-6 48-20;M138 188c16 10 32 16 48 16s32-6 48-16" dur="1.3s" repeatCount="indefinite"/>
+    </path>
+    <rect x="106" y="214" width="176" height="16" rx="8" fill="url(#bar)">
+      <animate attributeName="y" values="214;206;214" dur="1.3s" repeatCount="indefinite"/>
+    </rect>
+    <circle cx="106" cy="222" r="14" fill="#e2e8f0"/>
+    <circle cx="282" cy="222" r="14" fill="#e2e8f0"/>
+    <path d="M126 240c12 20 26 34 44 42" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round" fill="none"/>
+    <path d="M206 240c-12 20-26 34-44 42" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round" fill="none"/>
+  </g>
+  <text x="50%" y="392" text-anchor="middle" fill="#e2e8f0" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="700">Accesorios · silueta humana local</text>
+</svg>
