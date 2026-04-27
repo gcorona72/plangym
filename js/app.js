@@ -7,6 +7,19 @@
     : (typeof window !== 'undefined' && window.muscleWikiService) || {
       searchExerciseMedia: async () => null,
     };
+  const exerciseAnimationService = typeof require === 'function'
+    ? require('./exerciseAnimationService')
+    : (typeof window !== 'undefined' && window.exerciseAnimationService) || {
+      fetchExerciseAnimation: async () => null,
+      DEFAULT_EXERCISE_ANIMATION_CONFIG: {},
+    };
+  const exerciseMasterDictionary = typeof require === 'function'
+    ? require('./exerciseMasterDictionary')
+    : (typeof window !== 'undefined' && window.exerciseMasterDictionary) || {
+      EXERCISE_MASTER_DICTIONARY: [],
+      buildExerciseMasterLookup: () => ({}),
+      groupExerciseMasters: () => ({}),
+    };
 
   const STORAGE_KEY = 'plan-comida-state-v1';
   const DB_NAME = 'plan-comida-db';
@@ -544,6 +557,10 @@
     dbPromise = openDB();
     const stored = await loadState();
     state = hydrateState(stored);
+
+    const mode = normalizeTrainingMode(state.training.mode);
+    const groups = getTrainingCatalogGroups(mode);
+    const trainingVerb = mode === 'calisthenia' ? 'repeticiones y RIR' : 'peso, repeticiones y RIR';
 
     if (!state.profile.completed) {
       state.onboardingDraft = clone(state.profile);
@@ -1423,160 +1440,84 @@
   }
 
   function buildTrainingPrograms() {
-    const gymSeed = {
-      rutina_id: 'hipertrofia_torso_pierna_4dias',
-      nombre: 'Torso/Pierna para Ectomorfos',
-      dias: [
-        {
-          dia_semana: 'Lunes',
-          tipo: 'Torso 1',
-          enfoque: 'Fuerza/Hipertrofia',
-          ejercicios: [
-            { id: 't1_1', nombre: 'Barbell Bench Press', series: 4, reps: '6-8', descanso_seg: 120, animacion_url: '/assets/ejercicios/press_banca_barra.gif' },
-            { id: 't1_2', nombre: 'Barbell Row', series: 4, reps: '6-8', descanso_seg: 120, animacion_url: '/assets/ejercicios/remo_barra.gif' },
-            { id: 't1_3', nombre: 'Incline Dumbbell Press', series: 3, reps: '8-10', descanso_seg: 90, animacion_url: '/assets/ejercicios/press_inclinado_mancuerna.gif' },
-            { id: 't1_4', nombre: 'Lat Pulldown', series: 3, reps: '8-10', descanso_seg: 90, animacion_url: '/assets/ejercicios/jalon_pecho.gif' },
-            { id: 't1_5', nombre: 'Lateral Raise', series: 3, reps: '12-15', descanso_seg: 90, animacion_url: '/assets/ejercicios/elevaciones_laterales.gif' },
-            { id: 't1_6', nombre: 'Alternating Dumbbell Curl', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/curl_biceps_alterno.gif' },
-          ],
-        },
-        {
-          dia_semana: 'Martes',
-          tipo: 'Pierna 1',
-          enfoque: 'Cuádriceps Dominante',
-          ejercicios: [
-            { id: 'p1_1', nombre: 'Barbell Squat', series: 4, reps: '6-8', descanso_seg: 120, animacion_url: '/assets/ejercicios/sentadilla_barra.gif' },
-            { id: 'p1_2', nombre: 'Romanian Deadlift', series: 4, reps: '8-10', descanso_seg: 120, animacion_url: '/assets/ejercicios/peso_muerto_rumano.gif' },
-            { id: 'p1_3', nombre: 'Leg Press', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/prensa_piernas.gif' },
-            { id: 'p1_4', nombre: 'Leg Curl Machine', series: 3, reps: '12-15', descanso_seg: 90, animacion_url: '/assets/ejercicios/curl_isquios.gif' },
-            { id: 'p1_5', nombre: 'Standing Calf Raise', series: 4, reps: '12-15', descanso_seg: 90, animacion_url: '/assets/ejercicios/gemelos_pie.gif' },
-          ],
-        },
-        {
-          dia_semana: 'Miércoles',
-          tipo: 'Descanso',
-          enfoque: 'Recuperación Activa',
-          ejercicios: [],
-        },
-        {
-          dia_semana: 'Jueves',
-          tipo: 'Torso 2',
-          enfoque: 'Hipertrofia',
-          ejercicios: [
-            { id: 't2_1', nombre: 'Barbell Overhead Press', series: 4, reps: '8-10', descanso_seg: 120, animacion_url: '/assets/ejercicios/press_militar.gif' },
-            { id: 't2_2', nombre: 'Seated Cable Row', series: 4, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/remo_polea_baja.gif' },
-            { id: 't2_3', nombre: 'Flat Dumbbell Bench Press', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/press_plano_mancuerna.gif' },
-            { id: 't2_4', nombre: 'Face Pull', series: 3, reps: '12-15', descanso_seg: 90, animacion_url: '/assets/ejercicios/facepull.gif' },
-            { id: 't2_5', nombre: 'Tricep Pushdown', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/extension_triceps_polea.gif' },
-            { id: 't2_6', nombre: 'Hammer Curl', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/curl_martillo.gif' },
-          ],
-        },
-        {
-          dia_semana: 'Viernes',
-          tipo: 'Pierna 2',
-          enfoque: 'Cadera/Isquios Dominante',
-          ejercicios: [
-            { id: 'p2_1', nombre: 'Deadlift', series: 4, reps: '6-8', descanso_seg: 120, animacion_url: '/assets/ejercicios/hip_thrust.gif' },
-            { id: 'p2_2', nombre: 'Bulgarian Split Squat', series: 3, reps: '8-10', descanso_seg: 90, animacion_url: '/assets/ejercicios/sentadilla_bulgara.gif' },
-            { id: 'p2_3', nombre: 'Leg Extension', series: 3, reps: '12-15', descanso_seg: 90, animacion_url: '/assets/ejercicios/extension_cuadriceps.gif' },
-            { id: 'p2_4', nombre: 'Seated Leg Curl', series: 3, reps: '10-12', descanso_seg: 90, animacion_url: '/assets/ejercicios/curl_isquios_sentado.gif' },
-            { id: 'p2_5', nombre: 'Seated Calf Raise', series: 4, reps: '15-20', descanso_seg: 90, animacion_url: '/assets/ejercicios/gemelos_sentado.gif' },
-          ],
-        },
-        {
-          dia_semana: 'Sábado y Domingo',
-          tipo: 'Descanso',
-          enfoque: 'Recuperación Completa',
-          ejercicios: [],
-        },
-      ],
+    const masterExercises = Array.isArray(exerciseMasterDictionary.EXERCISE_MASTER_DICTIONARY) ? exerciseMasterDictionary.EXERCISE_MASTER_DICTIONARY : [];
+    const masterById = exerciseMasterDictionary.buildExerciseMasterLookup(masterExercises);
+    const planBlueprint = [
+      { id: 'day1', badge: 'Día 1', name: 'Pecho', focus: 'Empujes Horizontales', group: 'Pecho', exerciseIds: ['chest_1', 'chest_2', 'chest_3'] },
+      { id: 'day2', badge: 'Día 2', name: 'Espalda', focus: 'Tirones Verticales y Horizontales', group: 'Espalda', exerciseIds: ['back_1', 'back_2', 'back_3'] },
+      { id: 'day3', badge: 'Día 3', name: 'Hombros', focus: 'Empujes Verticales y Aislamiento', group: 'Hombros', exerciseIds: ['shoulder_1', 'shoulder_2', 'shoulder_3'] },
+      { id: 'day4', badge: 'Día 4', name: 'Piernas', focus: 'Cuádriceps · Dominantes de Rodilla', group: 'Cuádriceps', exerciseIds: ['legs_quad_1', 'legs_quad_2', 'legs_quad_3'] },
+      { id: 'day5', badge: 'Día 5', name: 'Piernas', focus: 'Isquiosurales y Glúteos · Dominantes de Cadera', group: 'Isquios y Glúteo', exerciseIds: ['legs_ham_1', 'legs_ham_2', 'legs_ham_3'] },
+      { id: 'day6', badge: 'Día 6', name: 'Brazos', focus: 'Tríceps y Bíceps · Aislamiento', group: 'Brazos', exerciseIds: ['arms_1', 'arms_2'] },
+      { id: 'day7', badge: 'Día 7', name: 'Pantorrillas', focus: 'Gemelos', group: 'Gemelos', exerciseIds: ['calves_1'] },
+    ];
+    const localVideoById = {
+      chest_1: 'img/exercises/videos/real/bench-press.webm',
+      chest_2: 'img/exercises/videos/real/incline-press.webm',
+      chest_3: 'img/exercises/videos/real/bench-press.webm',
+      back_1: 'img/exercises/videos/real/pull-up.webm',
+      back_2: 'img/exercises/videos/real/bent-over-row.webm',
+      back_3: 'img/exercises/videos/real/bent-over-row.webm',
+      shoulder_1: 'img/exercises/videos/real/shoulder-press.webm',
+      shoulder_2: 'img/exercises/videos/real/shoulder-press.webm',
+      shoulder_3: 'img/exercises/videos/real/bent-over-row.webm',
+      legs_quad_1: 'img/exercises/videos/real/squat.webm',
+      legs_quad_2: 'img/exercises/videos/real/squat.webm',
+      legs_quad_3: 'img/exercises/videos/real/squat-bodyweight.webm',
+      legs_ham_1: 'img/exercises/videos/real/deadlift.webm',
+      legs_ham_2: 'img/exercises/videos/real/hip-thrust.webm',
+      legs_ham_3: 'img/exercises/videos/real/deadlift.webm',
+      arms_1: 'img/exercises/videos/real/bent-over-row.webm',
+      arms_2: 'img/exercises/videos/real/push-up.webm',
+      calves_1: 'img/exercises/videos/real/squat-bodyweight.webm',
     };
-
+    const buildExercise = (entry, mode = 'gym') => {
+      const isCalisthenia = mode === 'calisthenia';
+      const baseId = String(entry.id || '').trim();
+      const apiTargetGym = String(entry.api_target_name || '').trim();
+      const apiTargetCali = String(entry.api_target_name_calistenia || '').trim();
+      return {
+        id: `${baseId}::${mode}`,
+        baseId,
+        variantMode: mode,
+        variantLabel: isCalisthenia ? 'Calistenia' : 'Gym',
+        grupo: String(entry.grupo || '').trim(),
+        name: isCalisthenia ? String(entry.alternativa_calistenia || entry.nombre_es || '') : String(entry.nombre_es || ''),
+        baseName: String(entry.nombre_es || ''),
+        alternativeName: String(entry.alternativa_calistenia || ''),
+        api_target_name: apiTargetGym,
+        api_target_name_calistenia: apiTargetCali,
+        mediaProvider: isCalisthenia ? String(entry.animation_source_calistenia || 'musclewiki').trim().toLowerCase() : String(entry.animation_source_gym || 'exercisedb').trim().toLowerCase(),
+        mediaQuery: isCalisthenia ? (apiTargetCali || entry.alternativa_calistenia || entry.nombre_es) : (apiTargetGym || entry.nombre_es),
+        localGifUrl: isCalisthenia ? String(entry.local_gif_url_calistenia || '').trim() : String(entry.local_gif_url_gym || '').trim(),
+        localVideoUrl: isCalisthenia ? String(entry.local_video_url_calistenia || '').trim() : String(entry.local_video_url_gym || '').trim(),
+        muscleZone: resolveExerciseMuscleZone({ id: baseId, name: entry.nombre_es, muscleWikiName: apiTargetGym, searchName: apiTargetGym }),
+        series: 3,
+        repRange: isCalisthenia ? '8-15' : '6-10',
+        descanso_seg: isCalisthenia ? 90 : 120,
+      };
+    };
     return {
-      routineId: gymSeed.rutina_id,
-      routineName: gymSeed.nombre,
-      gym: gymSeed.dias.map((day, index) => ({
-        id: `day${index + 1}`,
-        name: day.tipo,
-        focus: day.enfoque,
-        badge: `Día ${index + 1}`,
-        restDay: day.ejercicios.length === 0,
-        message: day.ejercicios.length === 0 ? day.enfoque : null,
-        exercises: day.ejercicios.map((exercise) => ({
-          id: exercise.id,
-          name: exercise.nombre,
-          series: exercise.series,
-          repRange: exercise.reps,
-          descanso_seg: exercise.descanso_seg,
-          animacion_url: resolveExerciseCanonicalAnimationUrl(exercise),
-          muscleZone: resolveExerciseMuscleZone(exercise),
-        })),
+      routineId: 'master_7_blocks_2026',
+      routineName: 'Diccionario Maestro de Ejercicios · 7 bloques',
+      gym: planBlueprint.map((blueprint) => ({
+        id: blueprint.id,
+        name: blueprint.name,
+        focus: blueprint.focus,
+        badge: blueprint.badge,
+        restDay: false,
+        message: null,
+        exercises: blueprint.exerciseIds.map((id) => masterById[id]).filter(Boolean).map((entry) => buildExercise(entry, 'gym')),
       })),
-      calisthenia: [
-        {
-          id: 'day1',
-          name: 'Torso',
-          focus: 'Empuje / Tirón',
-          badge: 'Día 1',
-          exercises: [
-            { id: 'pushups-standard', name: 'Push Up', series: 4, repRange: '8-15', muscleZone: resolveExerciseMuscleZone({ id: 'pushups-standard', name: 'Push Up' }) },
-            { id: 'inverted-row', name: 'Inverted Row', series: 4, repRange: '8-12', muscleZone: resolveExerciseMuscleZone({ id: 'inverted-row', name: 'Inverted Row' }) },
-            { id: 'decline-pushup', name: 'Decline Push Up', series: 3, repRange: '8-12', muscleZone: resolveExerciseMuscleZone({ id: 'decline-pushup', name: 'Decline Push Up' }) },
-            { id: 'pullup-assisted', name: 'Assisted Pull Up', series: 3, repRange: '5-8', muscleZone: resolveExerciseMuscleZone({ id: 'pullup-assisted', name: 'Assisted Pull Up' }) },
-            { id: 'pike-pushup', name: 'Pike Push Up', series: 3, repRange: '6-10', muscleZone: resolveExerciseMuscleZone({ id: 'pike-pushup', name: 'Pike Push Up' }) },
-            { id: 'hollow-hold', name: 'Hollow Hold', series: 3, repRange: '20-40 s', muscleZone: resolveExerciseMuscleZone({ id: 'hollow-hold', name: 'Hollow Hold' }) },
-          ],
-        },
-        {
-          id: 'day2',
-          name: 'Pierna',
-          focus: 'Cuádriceps / Control',
-          badge: 'Día 2',
-          exercises: [
-            { id: 'air-squat', name: 'Bodyweight Squat', series: 4, repRange: '15-25', muscleZone: resolveExerciseMuscleZone({ id: 'air-squat', name: 'Bodyweight Squat' }) },
-            { id: 'bulgarian-bodyweight', name: 'Bodyweight Bulgarian Split Squat', series: 3, repRange: '10-15 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'bulgarian-bodyweight', name: 'Bodyweight Bulgarian Split Squat' }) },
-            { id: 'step-up', name: 'Step Up', series: 3, repRange: '10-12 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'step-up', name: 'Step Up' }) },
-            { id: 'single-leg-hip-thrust', name: 'Single-Leg Hip Thrust', series: 3, repRange: '10-15 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'single-leg-hip-thrust', name: 'Single-Leg Hip Thrust' }) },
-            { id: 'calf-raises-bodyweight', name: 'Bodyweight Calf Raise', series: 4, repRange: '20-30', muscleZone: resolveExerciseMuscleZone({ id: 'calf-raises-bodyweight', name: 'Bodyweight Calf Raise' }) },
-          ],
-        },
-        {
-          id: 'day3',
-          name: 'Descanso',
-          focus: 'Recuperación',
-          badge: 'Día 3',
-          restDay: true,
-          message: 'Recuperación Activa',
-          exercises: [],
-        },
-        {
-          id: 'day4',
-          name: 'Torso',
-          focus: 'Volumen / Estabilidad',
-          badge: 'Día 4',
-          exercises: [
-            { id: 'diamond-pushup', name: 'Diamond Push Up', series: 4, repRange: '8-12', muscleZone: resolveExerciseMuscleZone({ id: 'diamond-pushup', name: 'Diamond Push Up' }) },
-            { id: 'chinup-assisted', name: 'Chin Up', series: 4, repRange: '5-8', muscleZone: resolveExerciseMuscleZone({ id: 'chinup-assisted', name: 'Chin Up' }) },
-            { id: 'pseudo-planche-pushup', name: 'Pseudo Planche Push Up', series: 3, repRange: '6-10', muscleZone: resolveExerciseMuscleZone({ id: 'pseudo-planche-pushup', name: 'Pseudo Planche Push Up' }) },
-            { id: 'archer-row', name: 'Archer Row', series: 3, repRange: '8-10 por lado', muscleZone: resolveExerciseMuscleZone({ id: 'archer-row', name: 'Archer Row' }) },
-            { id: 'handstand-hold', name: 'Handstand Hold', series: 3, repRange: '20-30 s', muscleZone: resolveExerciseMuscleZone({ id: 'handstand-hold', name: 'Handstand Hold' }) },
-            { id: 'bodyweight-curl', name: 'Isometric Towel Curl', series: 3, repRange: '20-30 s', muscleZone: resolveExerciseMuscleZone({ id: 'bodyweight-curl', name: 'Isometric Towel Curl' }) },
-          ],
-        },
-        {
-          id: 'day5',
-          name: 'Pierna',
-          focus: 'Posterior / Core',
-          badge: 'Día 5',
-          exercises: [
-            { id: 'single-leg-rdl-bodyweight', name: 'Single-Leg Romanian Deadlift', series: 4, repRange: '10-12 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'single-leg-rdl-bodyweight', name: 'Single-Leg Romanian Deadlift' }) },
-            { id: 'nordic-curl-assist', name: 'Assisted Nordic Curl', series: 3, repRange: '5-8', muscleZone: resolveExerciseMuscleZone({ id: 'nordic-curl-assist', name: 'Assisted Nordic Curl' }) },
-            { id: 'walking-lunge', name: 'Walking Lunge', series: 3, repRange: '12-20 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'walking-lunge', name: 'Walking Lunge' }) },
-            { id: 'cossack-squat', name: 'Cossack Squat', series: 3, repRange: '8-10 por lado', muscleZone: resolveExerciseMuscleZone({ id: 'cossack-squat', name: 'Cossack Squat' }) },
-            { id: 'calf-raises-single-leg', name: 'Single-Leg Calf Raise', series: 4, repRange: '15-25 por pierna', muscleZone: resolveExerciseMuscleZone({ id: 'calf-raises-single-leg', name: 'Single-Leg Calf Raise' }) },
-          ],
-        },
-      ],
+      calisthenia: planBlueprint.map((blueprint) => ({
+        id: blueprint.id,
+        name: blueprint.name,
+        focus: blueprint.focus,
+        badge: blueprint.badge,
+        restDay: false,
+        message: null,
+        exercises: blueprint.exerciseIds.map((id) => masterById[id]).filter(Boolean).map((entry) => buildExercise(entry, 'calisthenia')),
+      })),
     };
   }
 
@@ -2306,7 +2247,47 @@
   }
 
   function isCalistheniaExercise(exerciseId) {
-    return Boolean(state.training.programs?.calisthenia?.some((day) => (day.exercises || []).some((exercise) => exercise.id === exerciseId)));
+    return String(exerciseId || '').includes('::calisthenia') || String(exerciseId || '').includes('_calisthenia');
+  }
+
+  function buildTrainingExerciseVariant(masterExercise = {}, mode = state.training.mode) {
+    const normalizedMode = normalizeTrainingMode(mode);
+    const isCalisthenia = normalizedMode === 'calisthenia';
+    const baseId = String(masterExercise.id || '').trim();
+    const apiTargetGym = String(masterExercise.api_target_name || '').trim();
+    const apiTargetCali = String(masterExercise.api_target_name_calistenia || '').trim();
+
+    return {
+      id: `${baseId}::${normalizedMode}`,
+      baseId,
+      variantMode: normalizedMode,
+      variantLabel: isCalisthenia ? 'Calistenia' : 'Gym',
+      grupo: String(masterExercise.grupo || '').trim(),
+      name: isCalisthenia ? String(masterExercise.alternativa_calistenia || masterExercise.nombre_es || '') : String(masterExercise.nombre_es || ''),
+      baseName: String(masterExercise.nombre_es || ''),
+      alternativeName: String(masterExercise.alternativa_calistenia || ''),
+      api_target_name: apiTargetGym,
+      api_target_name_calistenia: apiTargetCali,
+      mediaProvider: isCalisthenia ? String(masterExercise.animation_source_calistenia || 'musclewiki').trim().toLowerCase() : String(masterExercise.animation_source_gym || 'exercisedb').trim().toLowerCase(),
+      mediaQuery: isCalisthenia ? (apiTargetCali || masterExercise.alternativa_calistenia || masterExercise.nombre_es) : (apiTargetGym || masterExercise.nombre_es),
+      localGifUrl: isCalisthenia ? String(masterExercise.local_gif_url_calistenia || '').trim() : String(masterExercise.local_gif_url_gym || '').trim(),
+      localVideoUrl: isCalisthenia ? String(masterExercise.local_video_url_calistenia || '').trim() : String(masterExercise.local_video_url_gym || '').trim(),
+      muscleZone: resolveExerciseMuscleZone({ id: baseId, name: masterExercise.nombre_es, muscleWikiName: apiTargetGym, searchName: apiTargetGym }),
+      series: 3,
+      repRange: isCalisthenia ? '8-15' : '6-10',
+      descanso_seg: isCalisthenia ? 90 : 120,
+    };
+  }
+
+  function getTrainingCatalogGroups(mode = state.training.mode) {
+    const grouped = exerciseMasterDictionary.groupExerciseMasters(exerciseMasterDictionary.EXERCISE_MASTER_DICTIONARY || []);
+    const order = ['Pecho', 'Espalda', 'Hombros', 'Cuádriceps', 'Isquios y Glúteo', 'Brazos', 'Gemelos'];
+    return order
+      .map((group) => ({
+        group,
+        exercises: (grouped[group] || []).map((entry) => buildTrainingExerciseVariant(entry, mode)).filter(Boolean),
+      }))
+      .filter((item) => item.exercises.length);
   }
 
   function roundTrainingValue(value, isBodyweight = false) {
@@ -2395,47 +2376,39 @@
   }
 
   function renderTraining() {
-    const selectedDay = getTrainingDay();
     const currentLogs = state.training.logsByDate[todayKey()] || {};
-    const dayIsRest = Boolean(selectedDay.restDay);
-    const trainingVerb = state.training.mode === 'calisthenia' ? 'repeticiones y RIR' : 'peso, repeticiones y RIR';
+    const mode = normalizeTrainingMode(state.training.mode);
+    const groups = getTrainingCatalogGroups(mode);
+    const trainingVerb = mode === 'calisthenia' ? 'repeticiones y RIR' : 'peso, repeticiones y RIR';
 
     return `
       <section class="panel-stack">
         <article class="glass-panel section-panel">
           <div class="section-heading">
-            <div><p class="eyebrow">Entrenamiento</p><h2>Torso / Pierna 4 días · Sobrecarga progresiva</h2></div>
-            <span class="step-pill">${selectedDay.badge} · Modo ${getTrainingModeLabel()}</span>
+            <div><p class="eyebrow">Entrenamiento</p><h2>Diccionario maestro de ejercicios</h2></div>
+            <span class="step-pill">${getTrainingModeLabel()}</span>
           </div>
-          <p class="muted">Registra ${trainingVerb}. La app buscará automáticamente la última sesión previa de cada ejercicio.</p>
+          <p class="muted">Catálogo general por grupo muscular. Cambia entre Gym y Calistenia para ver cada variante y registrar ${trainingVerb}.</p>
           ${renderTrainingModeTabs()}
         </article>
 
-        <section class="training-days">
-          ${state.training.days.map((day) => `
-            <button class="glass-panel training-day ${selectedDay.id === day.id ? 'is-active' : ''}" data-action="select-training-day" data-day-id="${day.id}">
-              <strong>${escapeHtml(day.badge)}</strong>
-              <span>${escapeHtml(day.name)}</span>
-              <small>${day.restDay ? day.message : day.focus}</small>
-            </button>
-          `).join('')}
-        </section>
-
-        ${dayIsRest ? `
-          <article class="glass-panel section-panel training-rest">
-            <h3>${escapeHtml(selectedDay.message)}</h3>
-            <p class="muted">Día de descanso activo: movilidad, paseo suave, sueño y comida para recuperar.</p>
-          </article>
-        ` : `
-          <section class="training-grid">
-            ${selectedDay.exercises.map((exercise) => renderExerciseCard(selectedDay, exercise, currentLogs)).join('')}
+        ${groups.map(({ group, exercises }) => `
+          <section class="glass-panel section-panel">
+            <div class="section-heading">
+              <div><p class="eyebrow">${escapeHtml(group)}</p><h3>${escapeHtml(group)}</h3></div>
+              <span class="step-pill">${mode === 'calisthenia' ? 'Calistenia' : 'Gym'}</span>
+            </div>
+            <div class="training-grid">
+              ${exercises.map((exercise) => renderExerciseCard(exercise, currentLogs)).join('')}
+            </div>
           </section>
-        `}
+        `).join('')}
       </section>
     `;
   }
 
-  function renderExerciseCard(day, exercise, currentLogs) {
+  function renderExerciseCard(exercise, currentLogs) {
+    primeExerciseMedia(exercise);
     const session = getLastSessionForExercise(exercise.id);
     const todaySets = currentLogs?.[exercise.id] || [];
     const weightPlan = getExerciseWeightPlan(exercise.id);
@@ -2445,11 +2418,12 @@
       <article class="glass-panel exercise-card" data-exercise-id="${exercise.id}">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">${escapeHtml(day.name)}</p>
+            <p class="eyebrow">${escapeHtml(exercise.grupo || 'Ejercicio')}</p>
             <h3>${escapeHtml(exercise.name)}</h3>
             <p class="muted">${exercise.series} series · ${exercise.repRange} reps${restLabel}</p>
+            <p class="muted exercise-card__variant-line">Gym: ${escapeHtml(exercise.baseName || exercise.name)} · Calistenia: ${escapeHtml(exercise.alternativeName || 'Sin alternativa')}</p>
           </div>
-          <span class="step-pill">Última sesión</span>
+          <span class="step-pill">${escapeHtml(exercise.variantLabel || getTrainingModeLabel(exercise.variantMode))}</span>
         </div>
 
         ${renderExerciseAnatomyFrame(exercise, { compact: true })}
@@ -3459,7 +3433,7 @@
       'hollow-hold': 'accessory.svg',
       'handstand-hold': 'accessory.svg',
     };
-    const assetName = assetMap[exercise?.id] || 'accessory.svg';
+    const assetName = assetMap[exercise?.baseId || exercise?.id] || 'accessory.svg';
     return `img/exercises/${assetName}`;
   }
 
@@ -3478,7 +3452,7 @@
         label: cached.label || exercise?.name || '',
       };
     }
-    if (state.exerciseMediaConfig.enabled && state.exerciseMediaConfig.rapidApiKey) {
+    if (state.exerciseMediaConfig.enabled) {
       if (localMediaUrl) {
         return {
           src: localMediaUrl,
@@ -3506,7 +3480,7 @@
   async function requestExerciseMedia(exercise) {
     if (!exercise) return null;
     const config = state.exerciseMediaConfig;
-    if (!config.enabled || !config.rapidApiKey) return null;
+    if (!config.enabled) return null;
     const cacheKey = getExerciseMediaCacheKey(exercise);
     const existing = state.exerciseMediaCache[cacheKey];
     const ttl = EXERCISE_MEDIA_CACHE_TTL_MS;
@@ -3516,20 +3490,33 @@
     if (state.exerciseMediaRequests[cacheKey]) return state.exerciseMediaRequests[cacheKey];
 
     const promise = (async () => {
-      const result = await muscleWikiService.searchExerciseMedia(getExerciseMediaQuery(exercise), config);
-      if (!result || !result.mediaUrl) {
+      const requestConfig = {
+        ...config,
+        provider: exercise.mediaProvider || config.provider,
+        localGifUrl: getExercisePrimaryLocalMediaUrl(exercise),
+        mockGifUrl: getExercisePrimaryLocalMediaUrl(exercise),
+      };
+      const result = await exerciseAnimationService.fetchExerciseAnimation(getExerciseMediaQuery(exercise), requestConfig);
+      if (!result || !result.gifUrl) {
         const fallbackSrc = getExercisePrimaryLocalMediaUrl(exercise);
         const fallbackEntry = { src: fallbackSrc, kind: inferLocalMediaKind(fallbackSrc), updatedAt: Date.now(), label: String(exercise.name || '') };
         state.exerciseMediaCache[cacheKey] = fallbackEntry;
         queueSave();
         return fallbackEntry;
       }
-      const entry = { src: String(result.mediaUrl), kind: 'remote', mediaType: result.mediaType || null, updatedAt: Date.now(), label: String(result.exercise?.name || exercise.name || '') };
+      const src = String(result.gifUrl);
+      const entry = {
+        src,
+        kind: result.mocked || result.source === 'local' ? inferLocalMediaKind(src) : 'remote',
+        mediaType: result.mediaType || null,
+        updatedAt: Date.now(),
+        label: String(result.exercise?.name || exercise.name || ''),
+      };
       state.exerciseMediaCache[cacheKey] = entry;
       queueSave();
       return entry;
     })().catch((error) => {
-      console.warn('No se pudo cargar MuscleWiki, se usará fallback local.', error);
+      console.warn('No se pudo cargar la animación, se usará fallback local.', error);
       const fallbackSrc = getExercisePrimaryLocalMediaUrl(exercise);
       const fallbackEntry = { src: fallbackSrc, kind: inferLocalMediaKind(fallbackSrc), updatedAt: Date.now(), label: String(exercise.name || '') };
       state.exerciseMediaCache[cacheKey] = fallbackEntry;
@@ -3560,7 +3547,7 @@
       return `
         <div class="${wrapperClass} empty-state exercise-media-skeleton" aria-busy="true" aria-live="polite">
           <div class="exercise-media-skeleton__spinner" aria-hidden="true"></div>
-          <p class="eyebrow">Buscando en MuscleWiki</p>
+          <p class="eyebrow">Buscando animación</p>
           <h4>${escapeHtml(exercise.name)}</h4>
           <div class="exercise-media-skeleton__bar exercise-media-skeleton__bar--short"></div>
           <div class="exercise-media-skeleton__bar"></div>
@@ -3571,7 +3558,7 @@
       return `
         <div class="${wrapperClass} empty-state exercise-media-skeleton exercise-media-skeleton--compact" aria-busy="true" aria-live="polite">
           <div class="exercise-media-skeleton__spinner" aria-hidden="true"></div>
-          <p class="eyebrow">MuscleWiki</p>
+          <p class="eyebrow">Animación</p>
           <h4>${escapeHtml(exercise.name)}</h4>
           <div class="exercise-media-skeleton__bar exercise-media-skeleton__bar--short"></div>
         </div>
@@ -3612,4 +3599,3 @@
     state.status = { text: message, type: 'info' };
   }
 })();
-

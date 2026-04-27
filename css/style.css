@@ -100,12 +100,22 @@ a {
   position: relative;
   max-width: var(--container);
   margin: 0 auto;
-  padding: 1rem;
+  padding: 1rem 1rem calc(2.5rem + env(safe-area-inset-bottom));
 }
 .app-shell--fallback {
   min-height: 100vh;
   display: grid;
   place-items: center;
+}
+.app-footer {
+  margin-top: 1.5rem;
+  padding: 0.9rem 1rem calc(0.9rem + env(safe-area-inset-bottom));
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.app-footer p {
+  margin: 0;
 }
 .ambient {
   position: fixed;
@@ -234,6 +244,12 @@ h4 {
   gap: 0.75rem;
 }
 
+.calendar-hero .hero-actions > .btn {
+  padding: 1rem 1.45rem;
+  min-height: 3.15rem;
+  line-height: 1.15;
+}
+
 .calendar-hero {
   align-items: start;
 }
@@ -246,7 +262,7 @@ h4 {
 .week-grid {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: clamp(17.5rem, 22vw, 19.5rem);
+  grid-auto-columns: clamp(19rem, 24vw, 22rem);
   gap: 0.85rem;
   overflow-x: auto;
   overflow-y: hidden;
@@ -281,6 +297,7 @@ h4 {
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.96);
   min-width: 0;
+  min-height: 21.5rem;
   scroll-snap-align: start;
 }
 
@@ -330,6 +347,7 @@ h4 {
 .day-card__preview {
   display: grid;
   gap: 0.65rem;
+  min-height: 7rem;
 }
 
 .day-card__meals {
@@ -657,6 +675,54 @@ h4 {
   object-fit: contain;
   border-radius: var(--radius-md);
   background: #0f172a;
+}
+
+.exercise-anatomy__svg {
+  width: 100%;
+  height: 172px;
+  display: block;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, #f8fafc, #e2e8f0);
+}
+
+.exercise-anatomy--compact .exercise-anatomy__svg {
+  height: 148px;
+}
+
+.exercise-anatomy__svg .body-outline {
+  fill: #e2e8f0;
+  stroke: rgba(15, 23, 42, 0.18);
+  stroke-width: 2;
+}
+
+.exercise-anatomy__svg .anatomy-label {
+  fill: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.exercise-anatomy__svg .muscle-zone {
+  fill: rgba(148, 163, 184, 0.28);
+  stroke: rgba(148, 163, 184, 0.5);
+  stroke-width: 1.5;
+  transition: fill 0.2s ease, opacity 0.2s ease, stroke 0.2s ease;
+}
+
+.exercise-anatomy__svg .muscle-zone.is-secondary {
+  fill: rgba(96, 165, 250, 0.45);
+  stroke: rgba(59, 130, 246, 0.72);
+}
+
+.exercise-anatomy__svg .muscle-zone.is-primary {
+  fill: rgba(59, 130, 246, 0.9);
+  stroke: rgba(37, 99, 235, 0.95);
+}
+
+.exercise-anatomy__caption > div {
+  display: grid;
+  gap: 0.1rem;
+  justify-items: end;
+  text-align: right;
 }
 
 .exercise-anatomy--compact .exercise-anatomy__image {
@@ -1227,10 +1293,12 @@ h4 {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.85rem 1.15rem;
+  padding: 0.95rem 1.3rem;
   border: 1px solid transparent;
   font-weight: 600;
   letter-spacing: -0.01em;
+  line-height: 1.1;
+  min-height: 2.9rem;
   transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
 .btn--primary {
@@ -1563,10 +1631,12 @@ textarea:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.72rem 0.95rem;
+  padding: 0.82rem 1.05rem;
   border: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(248, 250, 252, 0.96);
   color: var(--muted);
+  line-height: 1.1;
+  min-height: 2.75rem;
 }
 .chip.is-active,
 .chip--filter.is-active {
@@ -1915,7 +1985,11 @@ textarea:focus {
 }
 @media (max-width: 760px) {
   .app-shell {
-    padding: 0.75rem;
+    padding: 0.75rem 0.75rem calc(2.25rem + env(safe-area-inset-bottom));
+  }
+  .app-footer {
+    margin-top: 1.1rem;
+    padding-inline: 0.5rem;
   }
   .topbar,
   .hero,
@@ -2003,7 +2077,7 @@ textarea:focus {
     min-height: 132px;
   }
   .week-grid {
-    grid-auto-columns: clamp(15rem, 82vw, 17rem);
+    grid-auto-columns: clamp(17rem, 84vw, 19rem);
     padding-bottom: 0.75rem;
   }
   .bars {
