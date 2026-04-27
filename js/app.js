@@ -20,6 +20,22 @@
       buildExerciseMasterLookup: () => ({}),
       groupExerciseMasters: () => ({}),
     };
+  const dashboardComponent = typeof require === 'function'
+    ? require('../src/components/dashboard')
+    : (typeof window !== 'undefined' && window.planComidaArchitecture?.components?.dashboard) || {
+      renderDashboardHero: () => '',
+    };
+  const nutritionComponent = typeof require === 'function'
+    ? require('../src/components/nutrition')
+    : (typeof window !== 'undefined' && window.planComidaArchitecture?.components?.nutrition) || {
+      renderNutritionHero: () => '',
+    };
+  const appRepository = typeof require === 'function'
+    ? require('../src/db/repository').appRepository
+    : (typeof window !== 'undefined' && window.planComidaArchitecture?.db?.repository?.appRepository) || {
+      loadState: async () => null,
+      saveState: async (value) => value,
+    };
 
   const STORAGE_KEY = 'plan-comida-state-v1';
   const DB_NAME = 'plan-comida-db';
@@ -1772,28 +1788,26 @@
     const selectedPlan = ensurePlanForDate(selectedDate);
     const selectedTotals = getDailyTotals(selectedPlan);
     const weeklyCompletion = Math.min(100, Math.round((weekTotals.protein / (state.goals.protein * 7)) * 100));
+    const calendarModeLabel = state.planViewMode === 'month' ? 'mensual' : state.planViewMode === 'day' ? 'diario' : 'semanal';
+    const calendarTitle = state.planViewMode === 'month'
+      ? formatMonthLabel(state.activeDate)
+      : state.planViewMode === 'day'
+        ? formatDateLabel(selectedDate)
+        : formatWeekRangeLabel(weekDates[0], weekDates[6]);
+    const calendarSubtitle = state.planViewMode === 'month'
+      ? 'Revisa el mes completo y entra en cada día.'
+      : state.planViewMode === 'day'
+        ? 'Vista centrada en un solo día con sus comidas y el check de objetivos.'
+        : 'Semana completa de lunes a domingo con 5 comidas por día. Selecciona un día para entrar al detalle.';
 
     return `
-      <section class="hero glass-panel calendar-hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Calendario ${state.planViewMode === 'month' ? 'mensual' : state.planViewMode === 'day' ? 'diario' : 'semanal'}</p>
-          <h2>${state.planViewMode === 'month' ? formatMonthLabel(state.activeDate) : state.planViewMode === 'day' ? formatDateLabel(selectedDate) : formatWeekRangeLabel(weekDates[0], weekDates[6])}</h2>
-          <p class="subtitle">${state.planViewMode === 'month' ? 'Revisa el mes completo y entra en cada día.' : state.planViewMode === 'day' ? 'Vista centrada en un solo día con sus comidas y el check de objetivos.' : 'Semana completa de lunes a domingo con 5 comidas por día. Selecciona un día para entrar al detalle.'}</p>
-          <div class="plan-view-toggle" role="tablist" aria-label="Cambiar vista del plan">
-            <button class="chip chip--filter ${state.planViewMode === 'week' ? 'is-active' : ''}" type="button" data-view-mode="week">Semana</button>
-            <button class="chip chip--filter ${state.planViewMode === 'day' ? 'is-active' : ''}" type="button" data-view-mode="day">Día</button>
-            <button class="chip chip--filter ${state.planViewMode === 'month' ? 'is-active' : ''}" type="button" data-view-mode="month">Mes</button>
-          </div>
-          <div class="progress-rail" aria-label="Progreso semanal de proteína"><span class="progress-rail__label">Proteína</span><div class="progress-rail__track"><span style="width:${weeklyCompletion}%"></span></div><span class="progress-rail__value">${weeklyCompletion}%</span></div>
-        </div>
-        <div class="hero-actions hero-actions--stacked">
-          <button class="btn btn--ghost" data-action="previous-week">Semana anterior</button>
-          <button class="btn btn--primary" data-action="go-today">Ir a hoy</button>
-          <button class="btn btn--ghost" data-action="next-week">Semana siguiente</button>
-          <button class="btn btn--ghost" data-action="open-nutrition">Nutrición</button>
-          <button class="btn btn--ghost" data-action="open-training">Entrenamiento</button>
-        </div>
-      </section>
+      ${dashboardComponent.renderDashboardHero({
+        planViewMode: state.planViewMode,
+        calendarModeLabel,
+        calendarTitle,
+        calendarSubtitle,
+        weeklyCompletion,
+      })}
 
       ${renderPlanView(state.planViewMode, weekDates, weekPlans, weekTotals, selectedDate, selectedPlan, selectedTotals)}
     `;
@@ -2162,68 +2176,17 @@
 
     return `
       <section class="panel-stack">
-        <article class="glass-panel section-panel">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Nutrición</p>
-              <h2>Objetivo estático · 3000 kcal para masa muscular</h2>
-            </div>
-            <span class="step-pill">${consumedCount}/${state.nutrition.meals.length} comidas marcadas</span>
-          </div>
+        ${nutritionComponent.renderNutritionHero({
+          totals,
+          target,
+          progress,
+          consumedCount,
+          mealCount: state.nutrition.meals.length,
+          completion,
+        })}
 
-          <div class="nutrition-hero">
-            <div class="nutrition-hero__summary">
-              <p class="muted">Lo consumido hoy se compara con tu objetivo total y el plan es editable por marcas de consumido.</p>
-              <div class="nutrition-total">
-                <strong>${totals.kcal} / ${target.kcal} kcal</strong>
-                <div class="progress-rail"><span class="progress-rail__label">Energía</span><div class="progress-rail__track"><span style="width:${completion}%"></span></div><span class="progress-rail__value">${completion}%</span></div>
-              </div>
-            </div>
-            <div class="nutrition-hero__macros">
-              ${renderMetricCard('Proteína', `${totals.protein} / ${target.protein} g`, `${progress.protein}%`)}
-              ${renderMetricCard('Grasas', `${totals.fats} / ${target.fats} g`, `${progress.fats}%`)}
-              ${renderMetricCard('Carbohidratos', `${totals.carbs} / ${target.carbs} g`, `${progress.carbs}%`)}
-            </div>
-          </div>
-        </article>
-
-        <section class="nutrition-grid">
-          ${state.nutrition.meals.map((meal) => renderNutritionMealCard(meal)).join('')}
-        </section>
+        ${nutritionComponent.renderNutritionList(state.nutrition.meals, target)}
       </section>
-    `;
-  }
-
-  function renderNutritionMealCard(meal) {
-    return `
-      <article class="glass-panel nutrition-card ${meal.consumed ? 'is-consumed' : ''}" data-meal-id="${meal.id}">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">${escapeHtml(meal.nombre)}</p>
-            <h3>${escapeHtml(meal.kcal)} kcal</h3>
-            <p class="meal-card__summary">${escapeHtml(meal.alimentos)}</p>
-          </div>
-          <div class="meal-card__actions">
-            <button class="btn btn--ghost btn--small" data-action="open-nutrition-meal-detail" data-meal-id="${meal.id}">Ver detalle</button>
-            <button class="btn btn--${meal.consumed ? 'secondary' : 'primary'} btn--small" data-action="toggle-nutrition-meal" data-meal-id="${meal.id}">${meal.consumed ? 'Consumido' : 'Marcar consumido'}</button>
-          </div>
-        </div>
-
-        <div class="macro-row macro-row--compact">
-          <span>${meal.macros.proteina} g proteína</span>
-          <span>${meal.macros.grasa} g grasa</span>
-          <span>${meal.macros.carbohidratos} g carbos</span>
-          <span>${meal.kcal} kcal</span>
-        </div>
-
-        <div class="mini-progress mini-progress--compact">
-          <div class="nutrition-bar"><span>Proteína</span><div class="nutrition-bar__track"><span style="width:${Math.min(100, Math.round((meal.macros.proteina / state.nutrition.target.protein) * 100))}%"></span></div></div>
-          <div class="nutrition-bar"><span>Carbohidratos</span><div class="nutrition-bar__track"><span style="width:${Math.min(100, Math.round((meal.macros.carbohidratos / state.nutrition.target.carbs) * 100))}%"></span></div></div>
-          <div class="nutrition-bar"><span>Grasas</span><div class="nutrition-bar__track"><span style="width:${Math.min(100, Math.round((meal.macros.grasa / state.nutrition.target.fats) * 100))}%"></span></div></div>
-        </div>
-
-        <p class="muted">${meal.consumed ? `Marcado como consumido${meal.consumedAt ? ` · ${new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(new Date(meal.consumedAt))}` : ''}` : 'Abre el detalle para ver composición y cantidades.'}</p>
-      </article>
     `;
   }
 
@@ -3106,21 +3069,7 @@
   }
 
   async function loadState() {
-    try {
-      const fromDb = await readStateFromIndexedDB();
-      if (fromDb) return fromDb;
-    } catch (error) {
-      console.warn('No se pudo leer IndexedDB.', error);
-    }
-
-    try {
-      const fromStorage = localStorage.getItem(STORAGE_KEY);
-      if (fromStorage) return JSON.parse(fromStorage);
-    } catch (error) {
-      console.warn('No se pudo leer localStorage.', error);
-    }
-
-    return null;
+    return appRepository.loadState();
   }
 
   let saveTimeout = null;
@@ -3130,8 +3079,7 @@
       state.lastSync = new Date().toISOString();
       try {
         const snapshot = serializeState();
-        await writeStateToIndexedDB(snapshot);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+        await appRepository.saveState(snapshot);
       } catch (error) {
         console.warn('Persistencia local fallida, se conserva la sesión en memoria.', error);
       }
