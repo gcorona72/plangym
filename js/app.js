@@ -115,50 +115,24 @@
   };
   const EXERCISE_MEDIA_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 3;
   const LOCAL_EXERCISE_VIDEO_ALIASES = {
-    't1_1': 'real/bench-press.webm',
-    't1_2': 'real/bent-over-row.webm',
-    't1_3': 'real/incline-press.webm',
-    't1_4': 'real/pull-up.webm',
-    't1_5': 'real/shoulder-press.webm',
-    't1_6': 'real/bent-over-row.webm',
-    'p1_1': 'real/squat.webm',
-    'p1_2': 'real/deadlift.webm',
-    'p1_3': 'real/squat.webm',
-    'p1_4': 'real/deadlift.webm',
-    'p1_5': 'real/squat.webm',
-    't2_1': 'real/shoulder-press.webm',
-    't2_2': 'real/bent-over-row.webm',
-    't2_3': 'real/bench-press.webm',
-    't2_4': 'real/bent-over-row.webm',
-    't2_5': 'real/bench-press.webm',
-    't2_6': 'real/bent-over-row.webm',
-    'p2_1': 'real/deadlift.webm',
-    'p2_2': 'real/squat.webm',
-    'p2_3': 'real/squat.webm',
-    'p2_4': 'real/deadlift.webm',
-    'p2_5': 'real/squat.webm',
-    'pushups-standard': 'real/push-up.webm',
-    'decline-pushup': 'real/push-up.webm',
-    'diamond-pushup': 'real/push-up.webm',
-    'pseudo-planche-pushup': 'real/push-up.webm',
-    'pike-pushup': 'real/push-up.webm',
-    'inverted-row': 'real/pull-up.webm',
-    'pullup-assisted': 'real/pull-up.webm',
-    'chinup-assisted': 'real/pull-up.webm',
-    'archer-row': 'real/pull-up.webm',
-    'bodyweight-curl': 'real/pull-up.webm',
-    'air-squat': 'real/squat-bodyweight.webm',
-    'bulgarian-bodyweight': 'real/squat-bodyweight.webm',
-    'step-up': 'real/squat-bodyweight.webm',
-    'walking-lunge': 'real/squat-bodyweight.webm',
-    'cossack-squat': 'real/squat-bodyweight.webm',
-    'calf-raises-bodyweight': 'real/squat-bodyweight.webm',
-    'calf-raises-single-leg': 'real/squat-bodyweight.webm',
-    'single-leg-hip-thrust': 'real/hip-thrust.webm',
-    'single-leg-rdl-bodyweight': 'real/hip-thrust.webm',
-    'nordic-curl-assist': 'real/hip-thrust.webm',
-    'hollow-hold': 'real/leg-raises.webm',
-    'handstand-hold': 'real/hanging-crunches.webm',
+    'chest_1': 'real/bench-press.webm',
+    'chest_2': 'real/incline-press.webm',
+    'chest_3': 'real/push-up.webm',
+    'back_1': 'real/pull-up.webm',
+    'back_2': 'real/bent-over-row.webm',
+    'back_3': 'real/pull-up.webm',
+    'shoulder_1': 'real/shoulder-press.webm',
+    'shoulder_2': 'real/shoulder-press.webm',
+    'shoulder_3': 'real/bent-over-row.webm',
+    'legs_quad_1': 'real/squat.webm',
+    'legs_quad_2': 'real/squat.webm',
+    'legs_quad_3': 'real/squat-bodyweight.webm',
+    'legs_ham_1': 'real/deadlift.webm',
+    'legs_ham_2': 'real/hip-thrust.webm',
+    'legs_ham_3': 'real/deadlift.webm',
+    'arms_1': 'real/pull-up.webm',
+    'arms_2': 'real/push-up.webm',
+    'calves_1': 'real/squat-bodyweight.webm',
   };
   const MUSCLEWIKI_EXERCISE_NAME_ALIASES = {
     't1_1': 'Barbell Bench Press',
@@ -1105,71 +1079,35 @@
   }
 
   function saveCustomRecipe(form) {
-    const rawName = form.name.value.trim();
-    if (!rawName) {
-      state.status = { text: 'Escribe un nombre para la receta.', type: 'warning' };
-      render();
-      return;
-    }
-    const ingredients = String(form.ingredients.value || '')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [name, amount = 'al gusto'] = line.split('|').map((part) => part.trim());
-        return { name, amount, section: guessSection(name) };
-      });
-    const steps = String(form.steps.value || '')
-      .split('\n')
-      .map((step) => step.trim())
-      .filter(Boolean);
+    const draft = state.recipeDraft || createEmptyRecipeDraft();
+    const splitLines = (value) => String(value || '').split('\n').map((line) => line.trim()).filter(Boolean);
+    const ingredients = splitLines(form.ingredients.value).map((line) => {
+      const [name, amount] = line.split('|').map((part) => part.trim());
+      return { name: name || line, amount: amount || '', section: guessSection(name || line) };
+    });
+    const steps = splitLines(form.steps.value);
     const customRecipe = {
       id: `custom-${cryptoId()}`,
-      name: rawName,
-      mealType: form.mealType.value,
-      categories: [form.category.value || 'Comidas Rápidas'],
-      emoji: form.emoji.value || '🍽️',
-      accent: ['#334155', '#111827'],
-      prepTime: Number(form.prepTime.value) || 15,
-      proteinSource: form.proteinSource.value.trim() || 'Fuente proteica local',
-      calories: Number(form.calories.value) || 500,
-      protein: Number(form.protein.value) || 30,
-      carbs: Number(form.carbs.value) || 40,
-      fats: Number(form.fats.value) || 15,
-      sections: Array.from(new Set(ingredients.map((item) => item.section))),
-      dietary: ['omnivore', 'flexible', 'pescatarian', 'vegetarian'],
-      allergens: [],
+      name: form.name.value.trim() || draft.name || 'Receta personalizada',
+      mealType: form.mealType.value || draft.mealType || 'lunch',
+      categories: [form.category.value || draft.category || 'Comidas Rápidas'],
+      emoji: form.emoji.value.trim() || draft.emoji || '🍽️',
+      accent: ['#0f172a', '#1d4ed8'],
+      prepTime: Number(form.prepTime.value) || draft.prepTime || 15,
+      proteinSource: form.proteinSource.value.trim() || draft.proteinSource || '',
+      calories: Number(form.calories.value) || draft.calories || 0,
+      protein: Number(form.protein.value) || draft.protein || 0,
+      carbs: Number(form.carbs.value) || draft.carbs || 0,
+      fats: Number(form.fats.value) || draft.fats || 0,
       ingredients,
-      steps: steps.length ? steps : ['Prepara los ingredientes.', 'Cocina y sirve.'],
-      notes: form.notes.value.trim() || 'Receta personalizada del usuario.',
-      custom: true,
+      steps,
+      notes: form.notes.value.trim() || draft.notes || '',
     };
-    state.customRecipes = [customRecipe, ...state.customRecipes].slice(0, 40);
-    state.selectedRecipeId = customRecipe.id;
+    state.customRecipes = [customRecipe, ...state.customRecipes.filter((recipe) => recipe.id !== customRecipe.id)];
     state.recipeDraftOpen = false;
-    state.status = { text: 'Receta personalizada guardada en tu biblioteca local.', type: 'success' };
-    queueSave();
-    render();
-  }
-
-  function addWeightEntry() {
-    const field = document.getElementById('weight-entry');
-    if (!field) return;
-    const weight = Number(field.value);
-    if (!weight || weight <= 0) {
-      state.status = { text: 'Introduce un peso válido.', type: 'warning' };
-      render();
-      return;
-    }
-    const entry = {
-      date: todayKey(),
-      weight,
-      calories: getDailyTotals(getActivePlan()).calories,
-      protein: getDailyTotals(getActivePlan()).protein,
-    };
-    state.weightLog = [...state.weightLog.filter((item) => item.date !== entry.date), entry];
-    state.history = [...state.history.filter((item) => item.date !== entry.date), entry].slice(-90);
-    state.status = { text: 'Peso registrado en tu historial local.', type: 'success' };
+    state.recipeDraft = createEmptyRecipeDraft();
+    state.selectedRecipeId = customRecipe.id;
+    state.status = { text: `Receta guardada: ${customRecipe.name}.`, type: 'success' };
     queueSave();
     render();
   }
@@ -1177,11 +1115,7 @@
   function swapMeal(slot) {
     const plan = getActivePlan();
     const meal = plan.meals[slot];
-    if (!meal || meal.locked) {
-      state.status = { text: 'Desbloquea la comida para poder intercambiarla.', type: 'warning' };
-      render();
-      return;
-    }
+    if (!meal || meal.locked || !Array.isArray(meal.options) || !meal.options.length) return;
     const nextIndex = (meal.optionIndex + 1) % meal.options.length;
     meal.optionIndex = nextIndex;
     meal.selectedRecipeId = meal.options[nextIndex];
@@ -1456,7 +1390,9 @@
   }
 
   function buildTrainingPrograms() {
-    const masterExercises = Array.isArray(exerciseMasterDictionary.EXERCISE_MASTER_DICTIONARY) ? exerciseMasterDictionary.EXERCISE_MASTER_DICTIONARY : [];
+    const masterExercises = Array.isArray(exerciseMasterDictionary.EXERCISE_MASTER_DICTIONARY)
+      ? exerciseMasterDictionary.EXERCISE_MASTER_DICTIONARY.map((entry) => exerciseMasterDictionary.normalizeExerciseMasterItem(entry))
+      : [];
     const masterById = exerciseMasterDictionary.buildExerciseMasterLookup(masterExercises);
     const planBlueprint = [
       { id: 'day1', badge: 'Día 1', name: 'Pecho', focus: 'Empujes Horizontales', group: 'Pecho', exerciseIds: ['chest_1', 'chest_2', 'chest_3'] },
@@ -1503,6 +1439,8 @@
         alternativeName: String(entry.alternativa_calistenia || ''),
         api_target_name: apiTargetGym,
         api_target_name_calistenia: apiTargetCali,
+        youtubeId: String(entry.youtubeId || '').trim(),
+        youtubeId_calistenia: String(entry.youtubeId_calistenia || '').trim(),
         mediaProvider: isCalisthenia ? String(entry.animation_source_calistenia || 'musclewiki').trim().toLowerCase() : String(entry.animation_source_gym || 'exercisedb').trim().toLowerCase(),
         mediaQuery: isCalisthenia ? (apiTargetCali || entry.alternativa_calistenia || entry.nombre_es) : (apiTargetGym || entry.nombre_es),
         localGifUrl: isCalisthenia ? String(entry.local_gif_url_calistenia || '').trim() : String(entry.local_gif_url_gym || '').trim(),
@@ -2804,6 +2742,7 @@
     const isRemoteConfigured = Boolean(state.exerciseMediaConfig.enabled && state.exerciseMediaConfig.rapidApiKey);
     const cachedEntry = selectedExercise ? state.exerciseMediaCache[getExerciseMediaCacheKey(selectedExercise)] : null;
     const isRemoteMedia = cachedEntry?.kind === 'remote';
+    const isYoutubeMedia = selectedMedia.kind === 'youtube';
     const isRestDay = Boolean(training?.restDay) || exercises.length === 0;
 
     return `
@@ -2825,7 +2764,7 @@
               <div class="routine-modal-list__header">
                 <p class="eyebrow">Ejercicios</p>
                 <h3>${isRestDay ? 'Día de recuperación' : `${exercises.length} ejercicios`}</h3>
-                <p class="muted">Toca un ejercicio para ver su animación externa. MuscleWiki se consulta en vivo y la app conserva solo una caché temporal en el cliente.</p>
+                <p class="muted">Toca un ejercicio para ver su media curada. La app prioriza vídeos silenciosos embebidos de YouTube y mantiene una caché temporal solo para respaldos remotos o locales.</p>
               </div>
 
               ${isRestDay ? `
@@ -2850,7 +2789,7 @@
                   <h3>${selectedExercise ? escapeHtml(selectedExercise.name) : escapeHtml(training?.message || 'Descanso y recuperación')}</h3>
                     <p class="muted">${selectedExercise ? `${selectedExercise.series} series · ${escapeHtml(selectedExercise.repRange)}${restLabel}` : 'Sin animación asignada en este día.'}</p>
                 </div>
-                ${selectedExercise && selectedMedia.src ? `<a class="btn btn--ghost" href="${selectedMedia.src}" target="_blank" rel="noopener noreferrer">Abrir media</a>` : ''}
+                ${selectedExercise && (selectedMedia.watchUrl || selectedMedia.src) ? `<a class="btn btn--ghost" href="${escapeAttr(selectedMedia.watchUrl || selectedMedia.src)}" target="_blank" rel="noopener noreferrer">Abrir media</a>` : ''}
               </div>
 
               ${selectedExercise ? `
@@ -2878,11 +2817,11 @@
                 <div class="detail-body">
                   <article class="glass-panel section-panel">
                     <h4>Notas del ejercicio</h4>
-                    <p class="muted">${escapeHtml(selectedExercise.notes || (selectedMedia.kind === 'video' ? 'Reproducción directa de la URL externa devuelta por MuscleWiki.' : isRemoteConfigured ? 'Se intentará MuscleWiki como respaldo remoto dinámico.' : 'Activa MuscleWiki en ajustes si quieres animaciones externas.'))}</p>
+                    <p class="muted">${escapeHtml(selectedExercise.notes || (isYoutubeMedia ? 'Vídeo curado desde YouTube, reproducido en silencio y embebido en la tarjeta.' : selectedMedia.kind === 'video' ? 'Reproducción directa de la URL externa devuelta por el proveedor remoto.' : isRemoteConfigured ? 'Se intentará el proveedor remoto como respaldo dinámico.' : 'Activa el proveedor remoto en ajustes si quieres animaciones externas.'))}</p>
                   </article>
                   <article class="glass-panel section-panel">
                     <h4>Consejo rápido</h4>
-                    <p class="muted">Mantén la técnica limpia, controla el recorrido y usa el rango de ${progress.unitLabel} como referencia antes de progresar. ${selectedMedia.kind === 'video' ? 'Esta media externa se reproduce directamente desde la URL devuelta por MuscleWiki.' : isRemoteMedia ? 'Este respaldo viene desde MuscleWiki.' : ''}</p>
+                    <p class="muted">Mantén la técnica limpia, controla el recorrido y usa el rango de ${progress.unitLabel} como referencia antes de progresar. ${isYoutubeMedia ? 'Este vídeo silencioso viene de YouTube y se reproduce embebido sin controles.' : selectedMedia.kind === 'video' ? 'Esta media externa se reproduce directamente desde la URL devuelta por el proveedor remoto.' : isRemoteMedia ? 'Este respaldo viene desde el proveedor remoto.' : ''}</p>
                   </article>
                 </div>
               ` : `
@@ -3304,88 +3243,83 @@
   }
 
   function getExerciseLocalVideoUrl(exercise) {
-    const assetName = LOCAL_EXERCISE_VIDEO_ALIASES[exercise?.id];
+    const assetName = LOCAL_EXERCISE_VIDEO_ALIASES[exercise?.baseId || exercise?.id];
     return assetName ? `img/exercises/videos/${assetName}` : '';
-  }
-
-  function buildExerciseDbSearchUrl(query) {
-    const baseUrl = state.exerciseMediaConfig.baseUrl || defaultExerciseMediaConfig.baseUrl;
-    return `${baseUrl.replace(/\/$/, '')}/exercises/name/${encodeURIComponent(query)}`;
   }
 
   function getExerciseLocalFallbackUrl(exercise) {
     const assetMap = {
-      t1_1: 'push.svg',
-      t1_2: 'pull.svg',
-      t1_3: 'push.svg',
-      t1_4: 'pull.svg',
-      t1_5: 'push.svg',
-      t1_6: 'pull.svg',
-      p1_1: 'squat.svg',
-      p1_2: 'hinge.svg',
-      p1_3: 'squat.svg',
-      p1_4: 'hinge.svg',
-      p1_5: 'calves.svg',
-      t2_1: 'push.svg',
-      t2_2: 'pull.svg',
-      t2_3: 'push.svg',
-      t2_4: 'pull.svg',
-      t2_5: 'push.svg',
-      t2_6: 'pull.svg',
-      p2_1: 'hinge.svg',
-      p2_2: 'squat.svg',
-      p2_3: 'squat.svg',
-      p2_4: 'hinge.svg',
-      p2_5: 'calves.svg',
-      'bench-barbell': 'push.svg',
-      'incline-db-press': 'push.svg',
-      'flat-db-press': 'push.svg',
-      'shoulder-press': 'push.svg',
-      'triceps-pushdown': 'push.svg',
-      'barbell-row': 'pull.svg',
-      'lat-pulldown': 'pull.svg',
-      'low-pulley-row': 'pull.svg',
-      'facepull': 'pull.svg',
-      'alt-biceps-curl': 'pull.svg',
-      'hammer-curl': 'pull.svg',
-      'back-squat': 'squat.svg',
-      'leg-press': 'squat.svg',
-      'bulgarian-split-squat': 'squat.svg',
-      'leg-extension': 'squat.svg',
-      'romanian-deadlift': 'hinge.svg',
-      'conventional-deadlift': 'hinge.svg',
-      'seated-leg-curl': 'hinge.svg',
-      'standing-calf-raise': 'calves.svg',
-      'seated-calf-raise': 'calves.svg',
-      'lateral-raise': 'accessory.svg',
-      'pushups-standard': 'push.svg',
-      'decline-pushup': 'push.svg',
-      'pike-pushup': 'push.svg',
-      'diamond-pushup': 'push.svg',
-      'pseudo-planche-pushup': 'push.svg',
-      'inverted-row': 'pull.svg',
-      'pullup-assisted': 'pull.svg',
-      'chinup-assisted': 'pull.svg',
-      'archer-row': 'pull.svg',
-      'bodyweight-curl': 'pull.svg',
-      'air-squat': 'squat.svg',
-      'bulgarian-bodyweight': 'squat.svg',
-      'step-up': 'squat.svg',
-      'walking-lunge': 'squat.svg',
-      'cossack-squat': 'squat.svg',
-      'calf-raises-bodyweight': 'calves.svg',
-      'calf-raises-single-leg': 'calves.svg',
-      'single-leg-hip-thrust': 'hinge.svg',
-      'single-leg-rdl-bodyweight': 'hinge.svg',
-      'nordic-curl-assist': 'hinge.svg',
-      'hollow-hold': 'accessory.svg',
-      'handstand-hold': 'accessory.svg',
+      chest_1: 'push.svg',
+      chest_2: 'push.svg',
+      chest_3: 'push.svg',
+      back_1: 'pull.svg',
+      back_2: 'pull.svg',
+      back_3: 'pull.svg',
+      shoulder_1: 'push.svg',
+      shoulder_2: 'shoulders.svg',
+      shoulder_3: 'pull.svg',
+      legs_quad_1: 'squat.svg',
+      legs_quad_2: 'squat.svg',
+      legs_quad_3: 'squat.svg',
+      legs_ham_1: 'hinge.svg',
+      legs_ham_2: 'hinge.svg',
+      legs_ham_3: 'hinge.svg',
+      arms_1: 'pull.svg',
+      arms_2: 'push.svg',
+      calves_1: 'calves.svg',
     };
     const assetName = assetMap[exercise?.baseId || exercise?.id] || 'accessory.svg';
     return `img/exercises/${assetName}`;
   }
 
+  function normalizeYouTubeId(value) {
+    return String(value || '').trim();
+  }
+
+  function buildYouTubeWatchUrl(youtubeId) {
+    const id = normalizeYouTubeId(youtubeId);
+    return id ? `https://www.youtube.com/watch?v=${encodeURIComponent(id)}` : '';
+  }
+
+  function buildYouTubeEmbedUrl(youtubeId) {
+    const id = normalizeYouTubeId(youtubeId);
+    return id ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&mute=1&loop=1&playlist=${encodeURIComponent(id)}&controls=0&modestbranding=1&rel=0&playsinline=1` : '';
+  }
+
+  function buildYouTubeThumbnailUrl(youtubeId) {
+    const id = normalizeYouTubeId(youtubeId);
+    return id ? `https://img.youtube.com/vi/${encodeURIComponent(id)}/hqdefault.jpg` : '';
+  }
+
+  function getExerciseYouTubeId(exercise) {
+    if (!exercise) return '';
+    const variantMode = String(exercise.variantMode || '').toLowerCase();
+    const gymId = normalizeYouTubeId(exercise.youtubeId);
+    const calistheniaId = normalizeYouTubeId(exercise.youtubeId_calistenia);
+    if (variantMode === 'calisthenia') return calistheniaId || gymId;
+    return gymId || calistheniaId;
+  }
+
+  function buildExerciseYoutubeDescriptor(exercise) {
+    const youtubeId = getExerciseYouTubeId(exercise);
+    if (!youtubeId) return null;
+    const thumbnailUrl = buildYouTubeThumbnailUrl(youtubeId);
+    const embedUrl = buildYouTubeEmbedUrl(youtubeId);
+    return {
+      kind: 'youtube',
+      src: embedUrl,
+      watchUrl: buildYouTubeWatchUrl(youtubeId),
+      thumbnailUrl,
+      poster: thumbnailUrl || getExerciseLocalFallbackUrl(exercise),
+      fallback: getExerciseLocalFallbackUrl(exercise),
+      label: String(exercise?.name || ''),
+      youtubeId,
+    };
+  }
+
   function getExerciseMediaDescriptor(exercise) {
+    const youtubeDescriptor = buildExerciseYoutubeDescriptor(exercise);
+    if (youtubeDescriptor) return youtubeDescriptor;
     const cacheKey = getExerciseMediaCacheKey(exercise);
     const cached = state.exerciseMediaCache[cacheKey];
     const seedAnimationUrl = getExerciseSeedAnimationUrl(exercise);
@@ -3427,6 +3361,8 @@
 
   async function requestExerciseMedia(exercise) {
     if (!exercise) return null;
+    const youtubeDescriptor = buildExerciseYoutubeDescriptor(exercise);
+    if (youtubeDescriptor) return youtubeDescriptor;
     const config = state.exerciseMediaConfig;
     if (!config.enabled) return null;
     const cacheKey = getExerciseMediaCacheKey(exercise);
@@ -3509,6 +3445,21 @@
           <p class="eyebrow">Animación</p>
           <h4>${escapeHtml(exercise.name)}</h4>
           <div class="exercise-media-skeleton__bar exercise-media-skeleton__bar--short"></div>
+        </div>
+      `;
+    }
+    if (selectedMedia.kind === 'youtube') {
+      if (compact) {
+        const thumbnailUrl = selectedMedia.thumbnailUrl || selectedMedia.poster || getExerciseLocalFallbackUrl(exercise);
+        return `
+          <div class="${wrapperClass}">
+            <img class="exercise-demo exercise-demo--youtube-thumb" src="${escapeAttr(thumbnailUrl)}" alt="${escapeAttr(exercise.name)}" loading="lazy" decoding="async" data-fallback="${escapeAttr(selectedMedia.fallback || getExerciseLocalFallbackUrl(exercise))}" onerror="if(this.dataset.fallback && this.dataset.fallback !== this.src){this.onerror=null;this.src=this.dataset.fallback;}">
+          </div>
+        `;
+      }
+      return `
+        <div class="${wrapperClass}">
+          <iframe class="exercise-demo exercise-demo--youtube" src="${escapeAttr(selectedMedia.src)}" title="${escapeAttr(exercise.name)}" frameborder="0" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" style="border:none; pointer-events:none; width:100%; min-height:220px; aspect-ratio:16 / 9;"></iframe>
         </div>
       `;
     }

@@ -6,6 +6,7 @@ const EXERCISE_MASTER_DICTIONARY = [
     alternativa_calistenia: 'Flexiones con déficit',
     api_target_name: 'barbell bench press',
     api_target_name_calistenia: 'push ups',
+    youtubeId: 'rT7DgCr-3pg',
     animation_source_gym: 'exercisedb',
     animation_source_calistenia: 'musclewiki',
   },
@@ -181,24 +182,37 @@ const EXERCISE_MASTER_DICTIONARY = [
   },
 ];
 
+function normalizeExerciseMasterItem(item = {}) {
+  return {
+    ...item,
+    youtubeId: String(item?.youtubeId || '').trim(),
+    youtubeId_calistenia: String(item?.youtubeId_calistenia || '').trim(),
+    animation_source_gym: String(item?.animation_source_gym || 'exercisedb').trim().toLowerCase(),
+    animation_source_calistenia: String(item?.animation_source_calistenia || 'musclewiki').trim().toLowerCase(),
+  };
+}
+
 function buildExerciseMasterLookup(items = EXERCISE_MASTER_DICTIONARY) {
   return (Array.isArray(items) ? items : []).reduce((acc, item) => {
-    if (item && item.id) acc[item.id] = item;
+    const normalized = normalizeExerciseMasterItem(item);
+    if (normalized && normalized.id) acc[normalized.id] = normalized;
     return acc;
   }, {});
 }
 
 function groupExerciseMasters(items = EXERCISE_MASTER_DICTIONARY) {
   return (Array.isArray(items) ? items : []).reduce((acc, item) => {
-    const group = String(item?.grupo || '').trim();
+    const normalized = normalizeExerciseMasterItem(item);
+    const group = String(normalized?.grupo || '').trim();
     if (!group) return acc;
     if (!acc[group]) acc[group] = [];
-    acc[group].push(item);
+    acc[group].push(normalized);
     return acc;
   }, {});
 }
 
 exports.EXERCISE_MASTER_DICTIONARY = EXERCISE_MASTER_DICTIONARY;
+exports.normalizeExerciseMasterItem = normalizeExerciseMasterItem;
 exports.buildExerciseMasterLookup = buildExerciseMasterLookup;
 exports.groupExerciseMasters = groupExerciseMasters;
 
