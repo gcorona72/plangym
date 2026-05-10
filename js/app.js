@@ -24,6 +24,17 @@
     ? require('../src/components/dashboard')
     : (typeof window !== 'undefined' && window.planComidaArchitecture?.components?.dashboard) || {
       renderDashboardHero: () => '',
+      renderDashboardSummaryBlocks: () => '',
+    };
+  const summaryBuilder = typeof require === 'function'
+    ? require('../src/services/summaryBuilder')
+    : (typeof window !== 'undefined' && window.planComidaArchitecture?.services?.summaryBuilder) || {
+      SummaryBuilder: {
+        getDailySummary: () => ({
+          exercise: { label: 'Ejercicio', text: '' },
+          food: { label: 'Comida', text: '' },
+        }),
+      },
     };
   const nutritionComponent = typeof require === 'function'
     ? require('../src/components/nutrition')
@@ -201,6 +212,7 @@
     recipeDraft: createEmptyRecipeDraft(),
     selectedRecipeId: null,
     selectedNutritionMealId: null,
+    nutritionTodayMealsOpen: false,
     selectedPlanDetailDate: null,
     selectedExerciseVideoId: null,
     routineModalOpen: false,
@@ -614,6 +626,7 @@
     merged.recipeDraft = incoming.recipeDraft ? { ...createEmptyRecipeDraft(), ...incoming.recipeDraft } : createEmptyRecipeDraft();
     merged.selectedRecipeId = incoming.selectedRecipeId || null;
     merged.selectedNutritionMealId = incoming.selectedNutritionMealId || null;
+    merged.nutritionTodayMealsOpen = false;
     merged.selectedPlanDetailDate = incoming.selectedPlanDetailDate || null;
     merged.selectedExerciseVideoId = incoming.selectedExerciseVideoId || null;
     merged.routineModalOpen = Boolean(incoming.routineModalOpen);
@@ -895,6 +908,16 @@
         break;
       case 'close-nutrition-detail':
         state.selectedNutritionMealId = null;
+        render();
+        queueSave();
+        break;
+      case 'open-nutrition-today-meals':
+        state.nutritionTodayMealsOpen = true;
+        render();
+        queueSave();
+        break;
+      case 'close-nutrition-today-meals':
+        state.nutritionTodayMealsOpen = false;
         render();
         queueSave();
         break;
@@ -1325,6 +1348,13 @@
     }, { calories: 0, protein: 0, carbs: 0, fats: 0 });
   }
 
+  function getDaySummaryBlocks(plan = getActivePlan(), training = getTrainingRoutineForDate()) {
+    return summaryBuilder.SummaryBuilder.getDailySummary(
+      { plan, training, goals: state.goals },
+      { recipeLookup: getRecipeById },
+    );
+  }
+
   function shoppingListItems(days) {
     const items = new Map();
     for (let offset = 0; offset < days; offset += 1) {
@@ -1723,6 +1753,15 @@
 
         ${renderRecipeDetailModal()}
         ${renderPlanDayDetailModal()}
+        ${nutritionComponent.renderNutritionTodayMealsModal({
+          open: state.nutritionTodayMealsOpen,
+          meals: state.nutrition.meals,
+          target: state.nutrition.target,
+          totals: computeNutritionProgress().totals,
+          consumedCount: computeNutritionProgress().consumedCount,
+          mealCount: state.nutrition.meals.length,
+          title: formatDateLabel(state.activeDate),
+        })}
         ${renderNutritionMealDetailModal()}
         ${renderExerciseVideoModal()}
         ${renderOnboardingModal()}
@@ -1852,7 +1891,7 @@
   function renderDailyPlanView(selectedDate, selectedPlan, selectedTotals, weekTotals) {
     const objectiveCompleted = Boolean(selectedPlan.objectivesCompleted);
     const training = getTrainingRoutineForDate(selectedDate);
-    const dayMeals = MEAL_ORDER.map((slot) => renderWeekMealBlock(selectedDate, slot, selectedPlan.meals[slot], true)).join('');
+    const summaryBlocks = getDaySummaryBlocks(selectedPlan, training);
     return `
       <section class="dashboard-grid dashboard-grid--secondary dashboard-grid--daily">
         <article class="glass-panel summary-card summary-card--day">
@@ -1860,10 +1899,11 @@
             <div>
               <p class="eyebrow">Plan diario</p>
               <h3>${formatDateLabel(selectedDate)}</h3>
-              <p class="muted">Revisa las comidas del día y marca si has cumplido los objetivos.</p>
+              ${dashboardComponent.renderDashboardSummaryBlocks(summaryBlocks)}
             </div>
             <div class="inline-actions inline-actions--wrap">
               <button class="btn btn--ghost btn--small" type="button" data-action="open-plan-day-detail" data-date="${selectedDate}">Ver detalle</button>
+              <button class="btn btn--primary btn--small" type="button" data-action="open-nutrition-today-meals">Comidas de hoy</button>
               <label class="check-item check-item--pill">
                 <input type="checkbox" data-action="toggle-day-objective" data-date="${selectedDate}" ${objectiveCompleted ? 'checked' : ''}>
                 <span>Objetivos cumplidos</span>
@@ -1885,18 +1925,6 @@
             <button class="btn btn--ghost" data-action="open-recipes">Explorar recetas</button>
             <button class="btn btn--ghost" data-action="generate-shopping">Ver lista de compra</button>
           </div>
-        </article>
-      </section>
-
-      <section class="daily-plan-grid">
-        <article class="glass-panel section-panel">
-          <div class="section-heading"><div><p class="eyebrow">Comidas del día</p><h3>${selectedDate}</h3></div><span class="step-pill">${MEAL_ORDER.length} comidas</span></div>
-          <div class="meal-grid">${dayMeals}</div>
-        </article>
-        <article class="glass-panel section-panel">
-          <div class="section-heading"><div><p class="eyebrow">Rutina</p><h3>${training.badge}</h3></div><div class="inline-actions"><button class="btn btn--ghost btn--small" data-action="open-plan-day-detail" data-date="${selectedDate}">Ver día</button><button class="btn btn--secondary btn--small" data-action="open-training-routine" data-date="${selectedDate}">Ver</button></div></div>
-          <p class="muted">${training.restDay ? training.message : `${training.name} · ${training.focus}`}</p>
-          <button class="btn btn--primary" type="button" data-action="toggle-day-objective" data-date="${selectedDate}">${objectiveCompleted ? 'Desmarcar objetivos cumplidos' : 'Marcar objetivos cumplidos'}</button>
         </article>
       </section>
     `;
@@ -1951,6 +1979,7 @@
   function renderWeekDayCard(date, plan, index, isActive) {
     const totals = getDailyTotals(plan);
     const training = getWeeklyTrainingDay(index);
+    const summaryBlocks = getDaySummaryBlocks(plan, training);
     return `
       <article class="glass-panel day-card ${isActive ? 'is-active' : ''}" data-day-card="${date}">
         <button class="day-card__header day-card__header--button" type="button" data-action="select-week-day" data-date="${date}">
@@ -1968,7 +1997,7 @@
 
         <div class="day-card__preview">
           <div class="day-card__meals">
-            ${MEAL_ORDER.map((slot) => renderWeekMealPreview(date, slot, plan.meals[slot])).join('')}
+            ${dashboardComponent.renderDashboardSummaryBlocks(summaryBlocks)}
           </div>
           ${renderWeeklyTrainingSummary(training, date)}
         </div>
@@ -2008,7 +2037,7 @@
     `;
   }
 
-    function renderWeekMealBlock(date, slot, meal, isActive) {
+  function renderWeekMealBlock(date, slot, meal, isActive) {
     const recipe = getRecipeById(meal?.selectedRecipeId);
     if (!recipe) {
       return `<article class="meal-block empty-state">Sin receta disponible.</article>`;
@@ -2039,7 +2068,7 @@
         </div>
       </details>
     `;
-    }
+  }
 
   function setWeekMealOption(date, slot, recipeId) {
     if (!date || !slot || !recipeId) return;
@@ -2184,8 +2213,6 @@
           mealCount: state.nutrition.meals.length,
           completion,
         })}
-
-        ${nutritionComponent.renderNutritionList(state.nutrition.meals, target)}
       </section>
     `;
   }
@@ -2377,6 +2404,13 @@
     const weightPlan = getExerciseWeightPlan(exercise.id);
     const progress = getExerciseProgressLabels(exercise.id);
     const restLabel = exercise.descanso_seg ? ` · ${exercise.descanso_seg} s descanso` : '';
+
+    // Renderizado dinámico basado en el modo actual
+    const isCalisthenia = exercise.variantMode === 'calisthenia';
+    const alternativeText = isCalisthenia
+      ? `Equivalente Gym: ${escapeHtml(exercise.baseName || exercise.name)}`
+      : `Alternativa Calistenia: ${escapeHtml(exercise.alternativeName || 'Sin alternativa')}`;
+
     return `
       <article class="glass-panel exercise-card" data-exercise-id="${exercise.id}">
         <div class="section-heading">
@@ -2384,7 +2418,7 @@
             <p class="eyebrow">${escapeHtml(exercise.grupo || 'Ejercicio')}</p>
             <h3>${escapeHtml(exercise.name)}</h3>
             <p class="muted">${exercise.series} series · ${exercise.repRange} reps${restLabel}</p>
-            <p class="muted exercise-card__variant-line">Gym: ${escapeHtml(exercise.baseName || exercise.name)} · Calistenia: ${escapeHtml(exercise.alternativeName || 'Sin alternativa')}</p>
+            <p class="muted exercise-card__variant-line">${alternativeText}</p>
           </div>
           <span class="step-pill">${escapeHtml(exercise.variantLabel || getTrainingModeLabel(exercise.variantMode))}</span>
         </div>
@@ -2643,9 +2677,7 @@
                   <span>${recipe.fats} g grasas</span>
                   <span>${recipe.calories} kcal</span>
                 </div>
-                <p class="muted">Categorías: ${recipe.categories.map((item) => escapeHtml(item)).join(' · ')}</p>
-                <p class="muted">${escapeHtml(recipe.notes || 'Receta guardada en tu biblioteca local.')}</p>
-                <a class="btn btn--secondary" href="${getRecipeVideoUrl(recipe)}" target="_blank" rel="noopener noreferrer">Ver vídeo / búsqueda</a>
+                <p class="muted">Pulsa el botón de consumido para añadirla al progreso del día sin llenar la tarjeta principal de texto.</p>
               </article>
             </div>
 
@@ -2726,7 +2758,7 @@
                   <button class="btn btn--primary" type="button" data-action="open-training-routine" data-date="${date}">Ver rutina</button>
                   <button class="btn btn--ghost" type="button" data-action="toggle-day-objective" data-date="${date}">${objectiveCompleted ? 'Desmarcar objetivos' : 'Marcar objetivos cumplidos'}</button>
                 </div>
-                <p class="muted">Aquí puedes revisar el día sin llenar la vista principal de más texto.</p>
+                <p class="muted">Pulsa el botón de consumido para añadirla al progreso del día sin llenar la tarjeta principal de texto.</p>
               </article>
             </div>
           </div>
@@ -2809,7 +2841,7 @@
     return `
       <div class="modal-backdrop" data-action="close-training-routine">
         <section class="glass-panel modal modal--routine" role="dialog" aria-modal="true" aria-labelledby="routine-modal-title">
-          <header class="detail-hero detail-hero--video" style="background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96)); color: #0f172a; border-bottom: 1px solid rgba(15, 23, 42, 0.08);">
+          <header class="detail-hero" style="background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96)); color: #0f172a; border-bottom: 1px solid rgba(15, 23, 42, 0.08);">
             <div>
               <p class="eyebrow">Rutina de hoy</p>
               <h2 id="routine-modal-title">${escapeHtml(training?.badge || 'Rutina')}</h2>
@@ -2978,7 +3010,7 @@
               ${renderSelectField('category', 'Categoría', { 'Comidas Rápidas': 'Comidas Rápidas', 'Desayunos Altos en Proteína': 'Desayunos Altos en Proteína', 'Cenas Ligeras': 'Cenas Ligeras', 'Post-Entrenamiento': 'Post-Entrenamiento' }, draft.category, false)}
               <label class="input-group"><span>Emoji</span><input name="emoji" type="text" maxlength="2" value="${escapeAttr(draft.emoji)}" placeholder="🍽️"></label>
               ${renderNumberField('prepTime', 'Tiempo de preparación (min)', draft.prepTime, 5, 180)}
-              <label class="input-group"><span>Fuente proteica</span><input name="proteinSource" type="text" value="${escapeAttr(draft.proteinSource)}" placeholder="Pollo, huevo, atún..."></label>
+              <label class="input-group"><span>Fuente proteica</span><input name="proteinSource" type="text" value="${escapeAttr(draft.proteinSource)}" placeholder="Pollo, huevo, atún, legumbres..."></label>
               ${renderNumberField('calories', 'Kcal', draft.calories, 100, 1500)}
               ${renderNumberField('protein', 'Proteína (g)', draft.protein, 0, 120)}
               ${renderNumberField('carbs', 'Carbos (g)', draft.carbs, 0, 200)}

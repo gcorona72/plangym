@@ -54,6 +54,10 @@ function renderNutritionHero(props = {}) {
 		  <article class="metric-card"><span class="metric-card__label">Grasas</span><strong>${formatNumber(totals.fats || 0)} / ${formatNumber(target.fats || 0)} g</strong><small>${Number(progress.fats || 0)}%</small></article>
 		  <article class="metric-card"><span class="metric-card__label">Carbohidratos</span><strong>${formatNumber(totals.carbs || 0)} / ${formatNumber(target.carbs || 0)} g</strong><small>${Number(progress.carbs || 0)}%</small></article>
 		</div>
+		<div class="nutrition-hero__actions">
+		  <button class="btn btn--primary" type="button" data-action="open-nutrition-today-meals">Ver comidas de hoy</button>
+		  <p class="muted">La vista principal se queda limpia; el detalle completo vive en su propia ventana.</p>
+		</div>
 	  </div>
 	</article>
   `;
@@ -105,6 +109,38 @@ function renderNutritionList(meals = [], target = {}) {
   `;
 }
 
+function renderNutritionTodayMealsModal(props = {}) {
+  if (!props.open) return '';
+  const meals = Array.isArray(props.meals) ? props.meals : [];
+  const target = props.target || {};
+  const totals = props.totals || {};
+  const mealCount = Number(props.mealCount || meals.length || 0);
+  const consumedCount = Number(props.consumedCount || 0);
+  const title = String(props.title || 'Comidas de hoy').trim();
+
+  return `
+	<div class="modal-backdrop" data-action="close-nutrition-today-meals">
+	  <section class="glass-panel modal modal--nutrition" role="dialog" aria-modal="true" aria-labelledby="nutrition-today-title">
+		<header class="detail-hero detail-hero--nutrition" style="background: linear-gradient(155deg, rgba(52, 211, 153, 0.14), rgba(14, 165, 233, 0.1));">
+		  <div>
+			<p class="eyebrow">Ventana de comidas de hoy</p>
+			<h2 id="nutrition-today-title">${escapeHtml(title)}</h2>
+			<p class="muted">${consumedCount}/${mealCount} comidas marcadas · ${formatNumber(totals.kcal || 0)} kcal consumidas</p>
+		  </div>
+		  <button class="btn btn--ghost" type="button" data-action="close-nutrition-today-meals">Cerrar</button>
+		</header>
+
+		<div class="detail-body detail-body--nutrition">
+		  <article class="glass-panel section-panel">
+			<p class="muted">Aquí se concentran los detalles de cada comida para que el panel diario permanezca resumido.</p>
+		  </article>
+		  ${renderNutritionList(meals, target)}
+		</div>
+	  </section>
+	</div>
+  `;
+}
+
 function mountNutritionCard(containerId) {
   const container = typeof document !== 'undefined' ? document.getElementById(containerId) : null;
   if (!container) return () => {};
@@ -119,5 +155,5 @@ function mountNutritionCard(containerId) {
   return unsubscribe;
 }
 
-module.exports = { renderNutrition, renderNutritionHero, renderNutritionMealCard, renderNutritionList, mountNutritionCard };
+module.exports = { renderNutrition, renderNutritionHero, renderNutritionMealCard, renderNutritionList, renderNutritionTodayMealsModal, mountNutritionCard };
 

@@ -29,10 +29,28 @@ const TRAINING_CATALOG_GROUPS = [
   'Gemelos',
 ];
 
+// Mapeo de términos técnicos a nomenclatura de grupos musculares
+const TRAINING_TERMINOLOGY_MAP = {
+  'tirones': 'Espalda y Bíceps',
+  'pull': 'Espalda y Bíceps',
+  'tirones verticales': 'Espalda y Bíceps',
+  'tirones horizontales': 'Espalda y Bíceps',
+  'tirones verticales y/o horizontales': 'Espalda y Bíceps',
+  'empujes': 'Pecho, Hombros y Tríceps',
+  'push': 'Pecho, Hombros y Tríceps',
+  'empujes verticales': 'Pecho, Hombros y Tríceps',
+  'empujes horizontales': 'Pecho, Hombros y Tríceps',
+  'dominantes de rodilla': 'Piernas completas',
+  'dominantes de cadera': 'Piernas completas',
+  'dominantes de rodilla / cadera': 'Piernas completas',
+  'dominantes de rodilla/cadera': 'Piernas completas',
+};
+
 module.exports = {
   TRAINING_MODE_LABELS,
   TRAINING_SECTION_LABELS,
   DEFAULT_TRAINING_ROUTINE,
   TRAINING_CATALOG_GROUPS,
+  TRAINING_TERMINOLOGY_MAP,
 };
 
