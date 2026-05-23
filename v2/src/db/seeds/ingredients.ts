@@ -1,0 +1,130 @@
+import type { Ingredient } from '$lib/types';
+
+/**
+ * Ingredientes base. Macros aproximadas por 100g (o por unidad).
+ * Datos del BEDCA / USDA. Aproximados, ideales para tracking general.
+ */
+export const SEED_INGREDIENTS: Ingredient[] = [
+  // Proteínas
+  { id: 'chicken_breast', name: 'Pechuga de pollo', unit: 'g', category: 'protein',
+    macrosPer100: { kcal: 165, proteinG: 31, carbsG: 0, fatsG: 3.6 } },
+  { id: 'beef_lean', name: 'Ternera magra', unit: 'g', category: 'protein',
+    macrosPer100: { kcal: 158, proteinG: 26, carbsG: 0, fatsG: 5.5 } },
+  { id: 'salmon', name: 'Salmón', unit: 'g', category: 'protein',
+    macrosPer100: { kcal: 208, proteinG: 20, carbsG: 0, fatsG: 13 } },
+  { id: 'tuna_canned', name: 'Atún en lata (al natural)', unit: 'g', category: 'protein',
+    macrosPer100: { kcal: 116, proteinG: 26, carbsG: 0, fatsG: 1 } },
+  { id: 'egg', name: 'Huevo entero', unit: 'unit', category: 'protein',
+    macrosPer100: { kcal: 78, proteinG: 6.5, carbsG: 0.6, fatsG: 5.3 } },
+  { id: 'egg_white', name: 'Clara de huevo', unit: 'unit', category: 'protein',
+    macrosPer100: { kcal: 17, proteinG: 3.6, carbsG: 0.2, fatsG: 0.1 } },
+  { id: 'greek_yogurt', name: 'Yogur griego natural', unit: 'g', category: 'dairy',
+    macrosPer100: { kcal: 97, proteinG: 9, carbsG: 4, fatsG: 5 } },
+  { id: 'cottage_cheese', name: 'Queso cottage / quark', unit: 'g', category: 'dairy',
+    macrosPer100: { kcal: 98, proteinG: 11, carbsG: 3.4, fatsG: 4.3 } },
+  { id: 'whey_protein', name: 'Proteína whey en polvo', unit: 'g', category: 'protein',
+    macrosPer100: { kcal: 380, proteinG: 80, carbsG: 8, fatsG: 5 } },
+
+  // Carbohidratos
+  { id: 'rice_white_cooked', name: 'Arroz blanco (cocido)', unit: 'g', category: 'carb',
+    macrosPer100: { kcal: 130, proteinG: 2.7, carbsG: 28, fatsG: 0.3 } },
+  { id: 'rice_brown_cooked', name: 'Arroz integral (cocido)', unit: 'g', category: 'carb',
+    macrosPer100: { kcal: 111, proteinG: 2.6, carbsG: 23, fatsG: 0.9 } },
+  { id: 'pasta_cooked', name: 'Pasta (cocida)', unit: 'g', category: 'carb',
+    macrosPer100: { kcal: 158, proteinG: 5.8, carbsG: 31, fatsG: 0.9 } },
+  { id: 'oats', name: 'Avena (en seco)', unit: 'g', category: 'carb',
+    macrosPer100: { kcal: 389, proteinG: 17, carbsG: 66, fatsG: 7 } },
+  { id: 'potato', name: 'Patata', unit: 'g', category: 'carb',
+    macrosPer100: { kcal: 77, proteinG: 2, carbsG: 17, fatsG: 0.1 } },
+  { id: 'sweet_potato', name: 'Boniato', unit: 'g', category: 'carb',
+    macrosPer100: { kcal: 86, proteinG: 1.6, carbsG: 20, fatsG: 0.1 } },
+  { id: 'bread_whole', name: 'Pan integral', unit: 'g', category: 'carb',
+    macrosPer100: { kcal: 247, proteinG: 13, carbsG: 41, fatsG: 4.2 } },
+  { id: 'banana', name: 'Plátano', unit: 'unit', category: 'fruit',
+    macrosPer100: { kcal: 105, proteinG: 1.3, carbsG: 27, fatsG: 0.3 } },
+
+  // Grasas
+  { id: 'olive_oil', name: 'Aceite de oliva', unit: 'ml', category: 'fat',
+    macrosPer100: { kcal: 884, proteinG: 0, carbsG: 0, fatsG: 100 } },
+  { id: 'avocado', name: 'Aguacate', unit: 'g', category: 'fat',
+    macrosPer100: { kcal: 160, proteinG: 2, carbsG: 9, fatsG: 15 } },
+  { id: 'almonds', name: 'Almendras', unit: 'g', category: 'fat',
+    macrosPer100: { kcal: 579, proteinG: 21, carbsG: 22, fatsG: 50 } },
+  { id: 'peanut_butter', name: 'Crema de cacahuete', unit: 'g', category: 'fat',
+    macrosPer100: { kcal: 588, proteinG: 25, carbsG: 20, fatsG: 50 } },
+
+  // Vegetales
+  { id: 'broccoli', name: 'Brócoli', unit: 'g', category: 'vegetable',
+    macrosPer100: { kcal: 34, proteinG: 2.8, carbsG: 7, fatsG: 0.4 } },
+  { id: 'spinach', name: 'Espinacas', unit: 'g', category: 'vegetable',
+    macrosPer100: { kcal: 23, proteinG: 2.9, carbsG: 3.6, fatsG: 0.4 } },
+  { id: 'tomato', name: 'Tomate', unit: 'g', category: 'vegetable',
+    macrosPer100: { kcal: 18, proteinG: 0.9, carbsG: 3.9, fatsG: 0.2 } },
+
+  // ─── Ingredientes adicionales (recetas v2) ──────────────────────────────
+  // Proteínas
+  { id: 'turkey_breast_slices', name: 'Pechuga de pavo en lonchas', unit: 'g', category: 'protein',
+    macrosPer100: { kcal: 100, proteinG: 22, carbsG: 1, fatsG: 1 } },
+  { id: 'ground_turkey', name: 'Pavo picado', unit: 'g', category: 'protein',
+    macrosPer100: { kcal: 110, proteinG: 21, carbsG: 0, fatsG: 2 } },
+  { id: 'pork_loin', name: 'Lomo de cerdo magro', unit: 'g', category: 'protein',
+    macrosPer100: { kcal: 128, proteinG: 21, carbsG: 0, fatsG: 4.5 } },
+  { id: 'hake', name: 'Merluza (lomos)', unit: 'g', category: 'protein',
+    macrosPer100: { kcal: 80, proteinG: 18, carbsG: 0, fatsG: 0.7 } },
+  { id: 'cooked_ham', name: 'Jamón cocido extra', unit: 'g', category: 'protein',
+    macrosPer100: { kcal: 100, proteinG: 20, carbsG: 1, fatsG: 1.5 } },
+  { id: 'ricotta_cheese', name: 'Requesón', unit: 'g', category: 'dairy',
+    macrosPer100: { kcal: 100, proteinG: 11, carbsG: 3, fatsG: 5 } },
+  { id: 'feta_cheese', name: 'Queso feta', unit: 'g', category: 'dairy',
+    macrosPer100: { kcal: 260, proteinG: 14, carbsG: 4, fatsG: 21 } },
+  { id: 'cheese_slices', name: 'Queso en lonchas semi', unit: 'g', category: 'dairy',
+    macrosPer100: { kcal: 280, proteinG: 24, carbsG: 1, fatsG: 20 } },
+  { id: 'cottage_cheese_low_fat', name: 'Queso fresco batido 0%', unit: 'g', category: 'dairy',
+    macrosPer100: { kcal: 50, proteinG: 8, carbsG: 4, fatsG: 0.2 } },
+  { id: 'whole_milk', name: 'Leche entera', unit: 'ml', category: 'dairy',
+    macrosPer100: { kcal: 64, proteinG: 3.2, carbsG: 4.7, fatsG: 3.6 } },
+
+  // Carbohidratos
+  { id: 'rice_raw', name: 'Arroz (en crudo)', unit: 'g', category: 'carb',
+    macrosPer100: { kcal: 350, proteinG: 7, carbsG: 78, fatsG: 0.6 } },
+  { id: 'couscous_raw', name: 'Cuscús (en crudo)', unit: 'g', category: 'carb',
+    macrosPer100: { kcal: 357, proteinG: 12, carbsG: 73, fatsG: 2 } },
+  { id: 'wheat_tortilla', name: 'Tortilla de trigo grande', unit: 'unit', category: 'carb',
+    macrosPer100: { kcal: 140, proteinG: 4, carbsG: 24, fatsG: 3 } },
+  { id: 'baguette', name: 'Mini baguette integral', unit: 'unit', category: 'carb',
+    macrosPer100: { kcal: 220, proteinG: 8, carbsG: 42, fatsG: 2 } },
+  { id: 'rice_cakes', name: 'Tortita de arroz integral', unit: 'unit', category: 'carb',
+    macrosPer100: { kcal: 30, proteinG: 0.7, carbsG: 7, fatsG: 0.2 } },
+  { id: 'chickpeas_cooked', name: 'Garbanzos cocidos', unit: 'g', category: 'carb',
+    macrosPer100: { kcal: 145, proteinG: 8, carbsG: 21, fatsG: 3 } },
+  { id: 'black_beans_cooked', name: 'Frijoles negros cocidos', unit: 'g', category: 'carb',
+    macrosPer100: { kcal: 120, proteinG: 7.5, carbsG: 20, fatsG: 0.5 } },
+
+  // Grasas
+  { id: 'walnuts', name: 'Nueces peladas', unit: 'g', category: 'fat',
+    macrosPer100: { kcal: 654, proteinG: 15, carbsG: 14, fatsG: 65 } },
+  { id: 'light_mayo', name: 'Mayonesa ligera', unit: 'g', category: 'fat',
+    macrosPer100: { kcal: 350, proteinG: 1, carbsG: 8, fatsG: 35 } },
+  { id: 'chia_seeds', name: 'Semillas de chía', unit: 'g', category: 'fat',
+    macrosPer100: { kcal: 486, proteinG: 17, carbsG: 8, fatsG: 31 } },
+  { id: 'honey', name: 'Miel pura', unit: 'g', category: 'other',
+    macrosPer100: { kcal: 300, proteinG: 0.3, carbsG: 82, fatsG: 0 } },
+
+  // Verduras / frutas
+  { id: 'wok_vegetables_frozen', name: 'Verduras wok congeladas', unit: 'g', category: 'vegetable',
+    macrosPer100: { kcal: 40, proteinG: 2, carbsG: 6, fatsG: 0.3 } },
+  { id: 'green_beans', name: 'Judía verde', unit: 'g', category: 'vegetable',
+    macrosPer100: { kcal: 32, proteinG: 2, carbsG: 6, fatsG: 0.2 } },
+  { id: 'cherry_tomato', name: 'Tomate cherry', unit: 'g', category: 'vegetable',
+    macrosPer100: { kcal: 18, proteinG: 0.9, carbsG: 3.9, fatsG: 0.2 } },
+  { id: 'cucumber', name: 'Pepino', unit: 'g', category: 'vegetable',
+    macrosPer100: { kcal: 15, proteinG: 0.7, carbsG: 3.6, fatsG: 0.1 } },
+  { id: 'onion', name: 'Cebolla', unit: 'g', category: 'vegetable',
+    macrosPer100: { kcal: 40, proteinG: 1.1, carbsG: 9, fatsG: 0.1 } },
+  { id: 'bell_pepper', name: 'Pimiento', unit: 'g', category: 'vegetable',
+    macrosPer100: { kcal: 31, proteinG: 1, carbsG: 6, fatsG: 0.3 } },
+  { id: 'tomato_sauce', name: 'Salsa de tomate frito', unit: 'g', category: 'vegetable',
+    macrosPer100: { kcal: 60, proteinG: 1.5, carbsG: 10, fatsG: 1.5 } },
+  { id: 'frozen_berries', name: 'Frutos rojos congelados', unit: 'g', category: 'fruit',
+    macrosPer100: { kcal: 32, proteinG: 0.7, carbsG: 7, fatsG: 0.3 } }
+];
