@@ -1,6 +1,9 @@
 import { db } from '$db/database';
 import type { WorkoutSet, PlannedExercise, Exercise } from '$lib/types';
 import { getSuggestionStrategy } from './suggestionStrategies/SuggestionRegistry';
+import type { SuggestionContext } from './suggestionStrategies/SuggestionStrategy';
+import { detectConsecutiveFailures } from './suggestionStrategies/GymSuggestionStrategy';
+import { computeCycleStatus } from './cycle';
 
 /**
  * Sobrecarga progresiva para ectomorfos.
@@ -84,6 +87,19 @@ export async function suggestWeight(
   const lastEx = lastSession.exercises.find(e => e.exerciseId === exerciseId);
   if (!lastEx || lastEx.sets.length === 0) return NO_HISTORY;
 
+  // Construir contexto: failures consecutivos + estado del ciclo + perfil
+  const [failures, profile] = await Promise.all([
+    ex.modality === 'gym' ? detectConsecutiveFailures(exerciseId, planned) : Promise.resolve({ count: 0, message: '' }),
+    db.profile.get(1)
+  ]);
+  const cycle = computeCycleStatus(profile?.cycleStartDate);
+  const ctx: SuggestionContext = {
+    consecutiveFailures: failures.count,
+    isDeloadWeek: cycle.isDeloadWeek,
+    experienceLevel: profile?.experienceLevel,
+    phase: profile?.userPhase
+  };
+
   const strategy = getSuggestionStrategy(ex.modality);
-  return strategy.suggest(ex, planned, lastEx, lastSession.date);
+  return strategy.suggest(ex, planned, lastEx, lastSession.date, ctx);
 }

@@ -2,7 +2,7 @@
   import { profile, saveProfile, goals } from '$stores/profile';
   import { exportAllData, importAllData, wipeAllData } from '$db/database';
   import { EQUIPMENT_CATALOG, EQUIPMENT_BY_CATEGORY } from '$lib/equipmentCatalog';
-  import type { GymEquipmentId, ActivityLevel, Goal, DietType, Budget, TrainingPreference, TrainingProgram } from '$lib/types';
+  import type { GymEquipmentId, ActivityLevel, Goal, DietType, Budget, TrainingPreference, TrainingProgram, ExperienceLevel } from '$lib/types';
   import { SURPLUS_RANGE } from '$lib/nutrition/macros';
   import { navigate } from '$stores/navigation';
   import { onMount } from 'svelte';
@@ -137,6 +137,7 @@
   let surplusKcal: number = $profile?.surplusKcal ?? 500;
   let trainingPreference: TrainingPreference = $profile?.trainingPreference ?? 'hybrid';
   let trainingDaysPerWeek: number = $profile?.trainingDaysPerWeek ?? 4;
+  let experienceLevel: ExperienceLevel = $profile?.experienceLevel ?? 'beginner';
   let userPhase: 'recomp' | 'volume' | 'cut' | '' = $profile?.userPhase ?? '';
   let cardioDaysPerWeek: number = $profile?.cardioDaysPerWeek ?? 0;
   let cardioMinutesPerSession: number = $profile?.cardioMinutesPerSession ?? 25;
@@ -173,6 +174,7 @@
       surplusKcal,
       trainingPreference,
       trainingDaysPerWeek,
+      experienceLevel,
       userPhase: userPhase || undefined,
       cardioDaysPerWeek,
       cardioMinutesPerSession,
@@ -401,6 +403,24 @@
         <div class="mt-4">
           <label class="label" for="days">Días de entreno por semana</label>
           <input id="days" type="number" min="2" max="7" bind:value={trainingDaysPerWeek} class="input" />
+        </div>
+
+        <div class="mt-4">
+          <label class="label">Nivel de experiencia con pesas</label>
+          <select bind:value={experienceLevel} class="input">
+            <option value="beginner">Principiante (&lt;6 meses programa estructurado)</option>
+            <option value="intermediate">Intermedio (6 meses - 2 años)</option>
+            <option value="advanced">Avanzado (&gt;2 años consistente)</option>
+          </select>
+          <p class="text-[10px] text-slate-500 mt-1">
+            {#if experienceLevel === 'beginner'}
+              Puedes subir peso casi cada sesión durante los primeros meses (newbie gains).
+            {:else if experienceLevel === 'intermediate'}
+              Espera progreso cada 2-3 semanas en compuestos.
+            {:else}
+              Progreso lento, mide en meses. Confía en deload y ciclos.
+            {/if}
+          </p>
         </div>
       </div>
 

@@ -17,6 +17,15 @@ export type TrainingPreference = 'gym' | 'calisthenics' | 'hybrid';
  *  - cut:    perder grasa pura (- déficit)
  */
 export type UserPhase = 'recomp' | 'volume' | 'cut';
+/**
+ * Experiencia entrenando con pesas. Determina la velocidad esperada de
+ * progresión: principiante puede subir cada 1-2 sesiones (newbie gains),
+ * intermedio cada 2-3 semanas, avanzado mucho más lento.
+ *  - beginner:    <6 meses con un programa estructurado
+ *  - intermediate: 6 meses - 2 años
+ *  - advanced:    >2 años entrenando consistente
+ */
+export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
 
 export interface UserProfile {
   id: 1; // siempre 1, solo hay un usuario
@@ -56,6 +65,8 @@ export interface UserProfile {
   cycleStartDate?: string; // ISO yyyy-mm-dd
   /** Fase actual del plan (recomp / volume / cut). Si está definida, sobrescribe `goal`. */
   userPhase?: UserPhase;
+  /** Nivel de experiencia con pesas. Afecta a la velocidad de progresión sugerida. */
+  experienceLevel?: ExperienceLevel;
   /** Cardio: días por semana objetivo (0-7). */
   cardioDaysPerWeek?: number;
   /** Cardio: minutos por sesión. */

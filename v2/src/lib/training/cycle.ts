@@ -38,6 +38,26 @@ export function computeCycleStatus(cycleStartDate?: string): CycleStatus {
   return { currentWeek, isDeloadWeek, nextDeloadWeek, daysUntilDeload, cycleFinished };
 }
 
+/**
+ * Aplica los modificadores de una semana de descarga a un ejercicio planificado.
+ *
+ * Spec del proyecto: en semana de deload (6 y 12) se reducen las series al
+ * 60-70% del volumen normal (ej: 4 → 2-3) y la intensidad ~20% (RIR +2 / peso
+ * sugerido ligeramente menor). Devuelve un nuevo objeto, no muta el original.
+ */
+export function applyDeloadToPlanned<T extends { sets: number; targetRIR?: number }>(planned: T): T {
+  return {
+    ...planned,
+    // 60% del volumen, mínimo 2 series
+    sets: Math.max(2, Math.round(planned.sets * 0.6)),
+    // Forzar RIR alto (3+) para reducir intensidad efectiva
+    targetRIR: Math.max(3, planned.targetRIR ?? 3)
+  };
+}
+
+/** Multiplicador de peso sugerido en semana de deload. */
+export const DELOAD_WEIGHT_MULTIPLIER = 0.8;
+
 /** Texto explicativo del estado del ciclo. */
 export function cycleStatusMessage(status: CycleStatus): string {
   if (status.cycleFinished) {

@@ -1,6 +1,6 @@
 import type { PlannedExercise, Exercise, WorkoutSessionExercise } from '$lib/types';
 import type { WeightSuggestion } from '$lib/training/weightSuggestion';
-import type { SuggestionStrategy } from './SuggestionStrategy';
+import type { SuggestionStrategy, SuggestionContext } from './SuggestionStrategy';
 import { buildLastSummary } from './SuggestionStrategy';
 
 /**
@@ -17,7 +17,8 @@ export class CalisthenicsSuggestionStrategy implements SuggestionStrategy {
     exercise: Exercise,
     planned: PlannedExercise,
     lastEx: WorkoutSessionExercise,
-    lastDate: string
+    lastDate: string,
+    _ctx?: SuggestionContext
   ): WeightSuggestion {
     const lastSummary = buildLastSummary(lastEx, lastDate);
     const sets = lastEx.sets;

@@ -4,6 +4,8 @@
   import { routeParams, navigate } from '$stores/navigation';
   import { restTimer } from '$lib/gym/restTimer';
   import { suggestWeight, type WeightSuggestion } from '$lib/training/weightSuggestion';
+  import { computeCycleStatus, applyDeloadToPlanned } from '$lib/training/cycle';
+  import { profile } from '$stores/profile';
   import RestTimerBar from './RestTimerBar.svelte';
   import SetInput from './SetInput.svelte';
   import MuscleMap from './MuscleMap.svelte';
@@ -23,6 +25,7 @@
   let suggestions = new Map<string, WeightSuggestion>();
 
   let saving = false;
+  let isDeloadWeek = false;
 
   onMount(async () => {
     const params = $routeParams;
@@ -37,12 +40,22 @@
     const allEx = await db.exercises.toArray();
     exercisesById = new Map(allEx.map(e => [e.id, e]));
 
-    const planned = modality === 'gym' ? day.gymExercises : day.calisthenicsExercises;
+    // Si estamos en semana de deload, reducimos series y ajustamos RIR del plan
+    const cycle = computeCycleStatus($profile?.cycleStartDate);
+    isDeloadWeek = cycle.isDeloadWeek;
+    const rawPlanned = modality === 'gym' ? day.gymExercises : day.calisthenicsExercises;
+    const planned = isDeloadWeek ? rawPlanned.map(applyDeloadToPlanned) : rawPlanned;
 
     // Cargar sugerencias de peso en paralelo
     if (modality === 'gym') {
       const sugs = await Promise.all(planned.map(p => suggestWeight(p.exerciseId, p)));
       suggestions = new Map(planned.map((p, i) => [p.exerciseId, sugs[i]]));
+    }
+
+    // Mutamos el día en memoria para que getPlanned() devuelva el ajustado
+    if (isDeloadWeek) {
+      if (modality === 'gym') day.gymExercises = planned;
+      else day.calisthenicsExercises = planned;
     }
 
     // Iniciar sesión
@@ -127,6 +140,20 @@
       <h1 class="text-2xl font-bold">{day.name}</h1>
       <p class="text-slate-500 text-sm">{modality === 'gym' ? '🏋️ Versión gym' : '🤸 Versión calistenia'}</p>
     </header>
+
+    {#if isDeloadWeek}
+      <div class="card mb-3 ring-2 ring-orange-300 bg-orange-50">
+        <div class="flex items-start gap-2">
+          <span class="text-2xl">🔻</span>
+          <div class="text-sm">
+            <div class="font-bold text-orange-800">Semana de descarga</div>
+            <p class="text-orange-700 mt-0.5 text-xs">
+              Series reducidas un 40%, RIR mínimo 3. Mismo peso pero deja claras reservas — esta semana es para recuperar, no para PRs.
+            </p>
+          </div>
+        </div>
+      </div>
+    {/if}
 
     {#each (modality === 'gym' ? day.gymExercises : day.calisthenicsExercises) as planned (planned.exerciseId)}
       {@const ex = exercisesById.get(planned.exerciseId)}
