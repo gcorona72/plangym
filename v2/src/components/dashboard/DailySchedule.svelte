@@ -106,6 +106,7 @@
               if (entry.type === 'training') navigate('day_detail', { dayId: trainingDay?.id });
               else if (entry.type === 'meal' || entry.type === 'pre_workout_snack' || entry.type === 'post_workout') navigate('nutrition');
               else if (entry.type === 'sleep') navigate('sleep');
+              else if (entry.type === 'cardio') navigate('cardio');
             }}>
             <div class="flex items-center gap-2">
               <span class={isPast ? 'line-through' : ''}>{entry.label}</span>

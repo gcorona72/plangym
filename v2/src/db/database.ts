@@ -9,7 +9,8 @@ import type {
   DailyMealLog,
   SleepEntry,
   AppSettings,
-  WeightLog
+  WeightLog,
+  CardioSession
 } from '$lib/types';
 
 /**
@@ -30,6 +31,7 @@ class PlanGymDB extends Dexie {
   mealLogs!: Table<DailyMealLog, string>;
   sleep!: Table<SleepEntry, string>;
   weightLogs!: Table<WeightLog, string>;
+  cardioSessions!: Table<CardioSession, string>;
 
   constructor() {
     super('PlanGymDB');
@@ -48,6 +50,10 @@ class PlanGymDB extends Dexie {
     // v2: añade tabla de pesos
     this.version(2).stores({
       weightLogs: 'id, date'
+    });
+    // v3: tabla de sesiones de cardio (GPS + indoor)
+    this.version(3).stores({
+      cardioSessions: 'id, date, type, startedAt'
     });
   }
 }
@@ -73,7 +79,7 @@ export function emitDataChange(): void {
 }
 
 // Hookeamos las tablas que cambian con frecuencia
-for (const table of [db.profile, db.sessions, db.mealLogs, db.sleep, db.weightLogs, db.recipes]) {
+for (const table of [db.profile, db.sessions, db.mealLogs, db.sleep, db.weightLogs, db.recipes, db.cardioSessions]) {
   // Dexie permite hooks pero los hooks corren dentro de la transacción.
   // Disparamos `emitDataChange` después de commitear via setTimeout(0).
   (table as any).hook('creating', () => { setTimeout(emitDataChange, 0); });
@@ -106,7 +112,8 @@ export async function exportAllData(): Promise<string> {
     recipes: await db.recipes.toArray(),
     mealLogs: await db.mealLogs.toArray(),
     sleep: await db.sleep.toArray(),
-    weightLogs: await db.weightLogs.toArray()
+    weightLogs: await db.weightLogs.toArray(),
+    cardioSessions: await db.cardioSessions.toArray()
   };
   return JSON.stringify(data, null, 2);
 }
@@ -124,7 +131,7 @@ export async function importAllData(json: string): Promise<void> {
   await db.transaction(
     'rw',
     [db.profile, db.settings, db.exercises, db.programs, db.sessions,
-     db.ingredients, db.recipes, db.mealLogs, db.sleep, db.weightLogs],
+     db.ingredients, db.recipes, db.mealLogs, db.sleep, db.weightLogs, db.cardioSessions],
     async () => {
       await Promise.all([
         db.profile.clear(),
@@ -136,7 +143,8 @@ export async function importAllData(json: string): Promise<void> {
         db.recipes.clear(),
         db.mealLogs.clear(),
         db.sleep.clear(),
-        db.weightLogs.clear()
+        db.weightLogs.clear(),
+        db.cardioSessions.clear()
       ]);
 
       if (Array.isArray(data.profile)) await db.profile.bulkAdd(data.profile);
@@ -149,6 +157,7 @@ export async function importAllData(json: string): Promise<void> {
       if (Array.isArray(data.mealLogs)) await db.mealLogs.bulkAdd(data.mealLogs);
       if (Array.isArray(data.sleep)) await db.sleep.bulkAdd(data.sleep);
       if (Array.isArray(data.weightLogs)) await db.weightLogs.bulkAdd(data.weightLogs);
+      if (Array.isArray(data.cardioSessions)) await db.cardioSessions.bulkAdd(data.cardioSessions);
     }
   );
 }

@@ -5,7 +5,7 @@
     { route: 'dashboard',  label: 'Hoy',     icon: '🏠' },
     { route: 'training',   label: 'Entreno', icon: '🏋️' },
     { route: 'nutrition',  label: 'Comida',  icon: '🥗' },
-    { route: 'weight',     label: 'Peso',    icon: '⚖️' },
+    { route: 'cardio',     label: 'Cardio',  icon: '🚴' },
     { route: 'settings',   label: 'Más',     icon: '⋯' }
   ];
 </script>

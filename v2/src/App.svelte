@@ -22,6 +22,9 @@
   import WeightTracker from '$components/WeightTracker.svelte';
   import Help from '$components/Help.svelte';
   import ShoppingList from '$components/ShoppingList.svelte';
+  import Cardio from '$components/Cardio.svelte';
+  import CardioLive from '$components/CardioLive.svelte';
+  import CardioDetail from '$components/CardioDetail.svelte';
 
   onMount(async () => {
     const p = await loadProfile();
@@ -73,6 +76,12 @@
         <Help />
       {:else if $currentRoute === 'settings'}
         <Settings />
+      {:else if $currentRoute === 'cardio'}
+        <Cardio />
+      {:else if $currentRoute === 'cardio_live'}
+        <CardioLive />
+      {:else if $currentRoute === 'cardio_detail'}
+        <CardioDetail />
       {/if}
     </div>
   {/key}

@@ -8,6 +8,7 @@
     { route: 'training',   label: 'Entrenamiento', icon: '🏋️' },
     { route: 'nutrition',  label: 'Nutrición',   icon: '🥗' },
     { route: 'shopping',   label: 'Compra',      icon: '🛒' },
+    { route: 'cardio',     label: 'Cardio',      icon: '🚴' },
     { route: 'weight',     label: 'Peso',        icon: '⚖️' },
     { route: 'sleep',      label: 'Sueño',       icon: '🛌' },
     { route: 'help',       label: 'Guía',        icon: '💡' },

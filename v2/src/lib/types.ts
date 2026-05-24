@@ -350,6 +350,56 @@ export interface DailyGoals {
   targetFatsG: number;
 }
 
+// ─── CARDIO (sesiones con GPS) ─────────────────────────────────────────────
+/**
+ * Tipo de cardio:
+ *  - walk:       caminata (GPS)
+ *  - run:        carrera (GPS)
+ *  - bike:       bici (GPS)
+ *  - elliptical: elíptica / cinta indoor (sin GPS, distancia manual)
+ */
+export type CardioType = 'walk' | 'run' | 'bike' | 'elliptical';
+
+/** Punto de la ruta capturado por el GPS. */
+export interface RoutePoint {
+  /** Latitud */
+  lat: number;
+  /** Longitud */
+  lon: number;
+  /** Timestamp ISO de captura */
+  t: string;
+  /** Velocidad m/s (si el dispositivo la proporciona) */
+  speed?: number;
+  /** Precisión horizontal en metros (informativo) */
+  accuracy?: number;
+}
+
+/**
+ * Sesión de cardio guardada. Para tipos con GPS (walk/run/bike) `route`
+ * contiene la traza y `distanceMeters` se calcula sumando distancias
+ * Haversine entre puntos. Para elíptica `route` queda vacío y la distancia
+ * se introduce manualmente.
+ */
+export interface CardioSession {
+  id: string;
+  type: CardioType;
+  date: string;             // ISO yyyy-mm-dd (día de inicio)
+  startedAt: string;        // ISO datetime
+  finishedAt: string;       // ISO datetime
+  durationSeconds: number;
+  /** Distancia total en metros. */
+  distanceMeters: number;
+  /** Ruta GPS. Vacía para elíptica. */
+  route: RoutePoint[];
+  /** Pasos opcionales (entrada manual o desde Health). */
+  steps?: number;
+  /** FC media opcional (entrada manual o pulsómetro). */
+  avgHr?: number;
+  /** Calorías estimadas (cálculo simple por tipo + duración + peso). */
+  estimatedKcal?: number;
+  notes?: string;
+}
+
 // ─── PESO CORPORAL ─────────────────────────────────────────────────────────
 /**
  * Registro de peso. El usuario se pesa 3 veces por semana (mismo día,

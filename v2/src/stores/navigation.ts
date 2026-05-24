@@ -11,7 +11,10 @@ export type Route =
   | 'sleep'
   | 'weight'
   | 'help'
-  | 'settings';
+  | 'settings'
+  | 'cardio'
+  | 'cardio_live'
+  | 'cardio_detail';
 
 export const currentRoute = writable<Route>('dashboard');
 export const routeParams = writable<Record<string, any>>({});
