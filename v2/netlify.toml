@@ -2,6 +2,12 @@
   command = "npm run build"
   publish = "dist"
 
+# Endpoint unificado: /sync funciona igual en Netlify y Cloudflare
+[[redirects]]
+  from = "/sync"
+  to = "/.netlify/functions/sync"
+  status = 200
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

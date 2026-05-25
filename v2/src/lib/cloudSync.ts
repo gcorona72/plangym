@@ -19,7 +19,10 @@ import { exportAllData, importAllData } from '$db/database';
 import { syncState, type SyncStatus } from '$stores/sync';
 import { get } from 'svelte/store';
 
-const ENDPOINT = '/.netlify/functions/sync';
+// Endpoint unificado. Funciona en:
+//   - Cloudflare Pages → functions/sync.ts resuelve /sync directamente
+//   - Netlify          → netlify.toml redirige /sync → /.netlify/functions/sync
+const ENDPOINT = '/sync';
 const SALT = 'plangym-v2-salt-2026'; // sal fija para dificultar lookup table attacks
 const POLL_INTERVAL_MS = 10_000;      // chequeo cada 10s
 const DEBOUNCE_MS = 3_000;            // espera 3s sin cambios antes de subir
