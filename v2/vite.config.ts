@@ -3,7 +3,15 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
 
+/**
+ * BASE_PATH se setea en CI:
+ *  - GitHub Pages → "/plangym/" (la app vive bajo gcorona72.github.io/plangym/)
+ *  - Cloudflare Pages / Netlify / dev → "/" (subdominio propio)
+ */
+const BASE = process.env.BASE_PATH || '/';
+
 export default defineConfig({
+  base: BASE,
   resolve: {
     alias: {
       $lib: path.resolve(__dirname, './src/lib'),
@@ -26,8 +34,8 @@ export default defineConfig({
         background_color: '#f8fafc',
         display: 'standalone',
         orientation: 'portrait',
-        scope: '/',
-        start_url: '/',
+        scope: BASE,
+        start_url: BASE,
         lang: 'es',
         categories: ['fitness', 'health', 'lifestyle'],
         icons: [
