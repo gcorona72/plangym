@@ -25,6 +25,20 @@ export async function listCardioSessions(limit = 100): Promise<CardioSession[]> 
   return db.cardioSessions.orderBy('startedAt').reverse().limit(limit).toArray();
 }
 
+/**
+ * Última sesión registrada de un tipo concreto. Sirve para mostrar al
+ * usuario "Última: X km · Y min" en el lanzador, como referencia a batir.
+ */
+export async function getLastCardioSessionOfType(type: CardioType): Promise<CardioSession | null> {
+  const sessions = await db.cardioSessions
+    .orderBy('startedAt')
+    .reverse()
+    .filter(s => s.type === type)
+    .limit(1)
+    .toArray();
+  return sessions[0] ?? null;
+}
+
 /** Sesiones de un rango de fechas (date keys ISO yyyy-mm-dd, inclusive). */
 export async function getCardioSessionsBetween(fromDate: string, toDate: string): Promise<CardioSession[]> {
   return db.cardioSessions

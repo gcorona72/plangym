@@ -8,16 +8,33 @@
   import { canPerformExercise } from '$lib/training/exerciseFilter';
   import { summarizeDay } from '$lib/training/daySummary';
   import ExpandedExerciseCard from './ExpandedExerciseCard.svelte';
-  import { cardioTracker } from '$lib/cardio/cardioTracker';
-  import type { CardioType } from '$lib/types';
+  import { cardioTracker, formatDistance, formatDuration } from '$lib/cardio/cardioTracker';
+  import { getLastCardioSessionOfType } from '$lib/cardio/cardioRepository';
+  import type { CardioType, CardioSession } from '$lib/types';
 
   let cardioType: CardioType = 'walk';
+  let lastCardio: CardioSession | null = null;
   const CARDIO_TYPES: { id: CardioType; icon: string; label: string }[] = [
     { id: 'walk',       icon: '🚶', label: 'Caminar'  },
     { id: 'run',        icon: '🏃', label: 'Correr'   },
     { id: 'bike',       icon: '🚴', label: 'Bici'     },
     { id: 'elliptical', icon: '🤖', label: 'Elíptica' }
   ];
+
+  // Recargar la "última sesión" cada vez que el usuario cambia de tipo
+  $: loadLastCardio(cardioType);
+  async function loadLastCardio(t: CardioType) {
+    lastCardio = await getLastCardioSessionOfType(t);
+  }
+
+  function fmtRelative(iso: string): string {
+    const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+    if (days === 0) return 'hoy';
+    if (days === 1) return 'ayer';
+    if (days < 7) return `hace ${days}d`;
+    if (days < 30) return `hace ${Math.floor(days / 7)}sem`;
+    return `hace ${Math.floor(days / 30)}m`;
+  }
 
   function startCardio() {
     cardioTracker.start(cardioType);
@@ -58,34 +75,59 @@
     <h1 class="text-2xl md:text-3xl font-bold mb-1">{day.name}</h1>
     <p class="text-slate-500 text-sm mb-4">Tu plan de entrenamiento</p>
 
-    {#if day.isRestDay}
-      <div class="card text-center py-8 mb-3">
-        <div class="text-5xl mb-2">😴</div>
-        <p class="font-bold text-lg">Día de descanso</p>
-        <p class="text-sm text-slate-500 mt-1">Aprovecha para dormir y comer suficiente</p>
+    <!-- 🚴 Lanzador de cardio — siempre arriba (gym o descanso) -->
+    <div class="card-feature mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="section-title">🚴 Cardio</h3>
+        {#if lastCardio}
+          <span class="text-[10px] text-slate-500">Última {fmtRelative(lastCardio.startedAt)}</span>
+        {/if}
       </div>
 
-      <!-- Atajo cardio en día de descanso -->
-      <div class="card-feature">
-        <h3 class="section-title mb-2">🚴 Cardio activo (opcional)</h3>
-        <p class="text-xs text-slate-600 mb-2">El cardio ligero en día de descanso acelera la recuperación.</p>
-        <div class="grid grid-cols-4 gap-2 mb-3">
-          {#each CARDIO_TYPES as t}
-            <button class="py-2 rounded-lg border text-center transition active:scale-95"
-                    class:bg-primary-600={cardioType === t.id}
-                    class:text-white={cardioType === t.id}
-                    class:border-primary-600={cardioType === t.id}
-                    class:bg-white={cardioType !== t.id}
-                    class:border-slate-200={cardioType !== t.id}
-                    on:click={() => cardioType = t.id}>
-              <div class="text-xl">{t.icon}</div>
-              <div class="text-[10px] font-semibold mt-0.5">{t.label}</div>
-            </button>
-          {/each}
+      <div class="grid grid-cols-4 gap-2 mb-2">
+        {#each CARDIO_TYPES as t}
+          <button class="py-2 rounded-lg border text-center transition active:scale-95"
+                  class:bg-primary-600={cardioType === t.id}
+                  class:text-white={cardioType === t.id}
+                  class:border-primary-600={cardioType === t.id}
+                  class:bg-white={cardioType !== t.id}
+                  class:border-slate-200={cardioType !== t.id}
+                  on:click={() => cardioType = t.id}>
+            <div class="text-xl">{t.icon}</div>
+            <div class="text-[10px] font-semibold mt-0.5">{t.label}</div>
+          </button>
+        {/each}
+      </div>
+
+      <!-- Stats de la última sesión del tipo seleccionado (referencia a batir) -->
+      {#if lastCardio}
+        <div class="bg-white/70 rounded-lg px-3 py-2 mb-2 text-xs flex items-center gap-3">
+          <span class="text-slate-500">Última:</span>
+          <span class="font-mono font-bold">{formatDistance(lastCardio.distanceMeters)}</span>
+          <span class="text-slate-400">·</span>
+          <span class="font-mono font-bold">{formatDuration(lastCardio.durationSeconds)}</span>
+          {#if lastCardio.estimatedKcal}
+            <span class="text-slate-400">·</span>
+            <span class="font-mono">{lastCardio.estimatedKcal} kcal</span>
+          {/if}
         </div>
-        <button class="btn-accent w-full" on:click={startCardio}>
-          ▶ Iniciar {CARDIO_TYPES.find(t => t.id === cardioType)?.label.toLowerCase()}
-        </button>
+        <p class="text-[10px] text-slate-500 mb-2">
+          🎯 Apunta a superar esa marca hoy (+5-10% distancia o más rápido).
+        </p>
+      {:else}
+        <p class="text-[10px] text-slate-500 mb-2">Sin registros previos de este tipo. La primera vez fija tu baseline.</p>
+      {/if}
+
+      <button class="btn-accent w-full" on:click={startCardio}>
+        ▶ Iniciar {CARDIO_TYPES.find(t => t.id === cardioType)?.label.toLowerCase()}
+      </button>
+    </div>
+
+    {#if day.isRestDay}
+      <div class="card text-center py-8">
+        <div class="text-5xl mb-2">😴</div>
+        <p class="font-bold text-lg">Día de descanso</p>
+        <p class="text-sm text-slate-500 mt-1">Aprovecha para dormir y comer suficiente. El cardio ligero (arriba) acelera la recuperación.</p>
       </div>
     {:else}
       <!-- 📍 Resumen visible del día -->
@@ -173,29 +215,6 @@
       <button class="btn-accent w-full" on:click={() => navigate('gym_session', { dayId: day?.id, modality })}>
         ▶️ Empezar sesión ahora
       </button>
-
-      <!-- Atajo cardio (warm-up o tras el entreno) -->
-      <div class="card mt-3">
-        <h3 class="section-title mb-2">🚴 ¿Cardio antes o después?</h3>
-        <p class="text-[11px] text-slate-500 mb-2">Atajo rápido. 5-10 min de caminata como warm-up o LISS tras el entreno.</p>
-        <div class="grid grid-cols-4 gap-2 mb-2">
-          {#each CARDIO_TYPES as t}
-            <button class="py-2 rounded-lg border text-center transition active:scale-95"
-                    class:bg-primary-600={cardioType === t.id}
-                    class:text-white={cardioType === t.id}
-                    class:border-primary-600={cardioType === t.id}
-                    class:bg-white={cardioType !== t.id}
-                    class:border-slate-200={cardioType !== t.id}
-                    on:click={() => cardioType = t.id}>
-              <div class="text-lg">{t.icon}</div>
-              <div class="text-[10px] font-semibold mt-0.5">{t.label}</div>
-            </button>
-          {/each}
-        </div>
-        <button class="btn-secondary w-full text-sm" on:click={startCardio}>
-          ▶ Iniciar cardio · {CARDIO_TYPES.find(t => t.id === cardioType)?.label.toLowerCase()}
-        </button>
-      </div>
     {/if}
   {:else}
     <p class="text-slate-500 text-center py-8">Cargando…</p>
