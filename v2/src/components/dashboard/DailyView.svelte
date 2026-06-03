@@ -4,7 +4,10 @@
   import type { TrainingProgram, TrainingDay, DailyGoals, DailyMealLog, WorkoutSession, SleepEntry, Exercise, ExerciseModality } from '$lib/types';
   import { db } from '$db/database';
   import { toDateKey, isoDayOfWeek } from '$lib/dateUtils';
-  import { macrosOfLog } from '$lib/dashboardData';
+  import { macrosOfLog, getCardioBetween } from '$lib/dashboardData';
+  import { formatDistance, formatDuration } from '$lib/cardio/cardioTracker';
+  import type { CardioSession } from '$lib/types';
+  const CARDIO_ICONS: Record<string, string> = { walk: '🚶', run: '🏃', bike: '🚴', elliptical: '🤖' };
   import ExerciseCard from '../ExerciseCard.svelte';
   import ProgressCard from './ProgressCard.svelte';
   import DailySchedule from './DailySchedule.svelte';
@@ -18,6 +21,7 @@
   let todayLog: DailyMealLog | null = null;
   let todaySession: WorkoutSession | null = null;
   let lastSleep: SleepEntry | null = null;
+  let todayCardio: CardioSession[] = [];
   let exercisesById = new Map<string, Exercise>();
   let preview: ExerciseModality = 'gym';
 
@@ -32,9 +36,14 @@
     todayLog = (await db.mealLogs.get(`log_${todayKey}`)) ?? null;
     todaySession = (await db.sessions.where('date').equals(todayKey).first()) ?? null;
     lastSleep = (await db.sleep.orderBy('date').reverse().first()) ?? null;
+    todayCardio = await getCardioBetween(todayKey, todayKey);
     const ex = await db.exercises.toArray();
     exercisesById = new Map(ex.map(e => [e.id, e]));
   });
+
+  $: cardioTotalDist = todayCardio.reduce((a, c) => a + c.distanceMeters, 0);
+  $: cardioTotalSecs = todayCardio.reduce((a, c) => a + c.durationSeconds, 0);
+  $: cardioTotalKcal = todayCardio.reduce((a, c) => a + (c.estimatedKcal ?? 0), 0);
 
   $: macrosToday = todayLog ? macrosOfLog(todayLog) : { kcal: 0, proteinG: 0, carbsG: 0, fatsG: 0 };
   $: todayExercises = todayPlan ? (preview === 'gym' ? todayPlan.gymExercises : todayPlan.calisthenicsExercises) : [];
@@ -79,6 +88,54 @@
     </div>
   </div>
 {/if}
+
+<!-- Card cardio de hoy -->
+<div class="card mb-3">
+  <div class="flex items-center justify-between mb-2">
+    <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wide">🚴 Cardio de hoy</h2>
+    {#if todayCardio.length > 0}
+      <span class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider bg-emerald-100 px-2 py-0.5 rounded-full">{todayCardio.length} sesión{todayCardio.length === 1 ? '' : 'es'}</span>
+    {/if}
+  </div>
+
+  {#if todayCardio.length === 0}
+    <div class="text-center py-2">
+      <p class="text-xs text-slate-500 mb-3">Sin cardio aún hoy.</p>
+      <button class="btn-secondary w-full text-sm" on:click={() => navigate('cardio')}>
+        ▶ Empezar cardio
+      </button>
+    </div>
+  {:else}
+    <!-- Resumen total -->
+    <div class="grid grid-cols-3 gap-2 mb-3">
+      <div class="text-center">
+        <div class="text-lg font-bold font-mono">{formatDistance(cardioTotalDist)}</div>
+        <div class="text-[10px] text-slate-500 uppercase">Distancia</div>
+      </div>
+      <div class="text-center">
+        <div class="text-lg font-bold font-mono">{formatDuration(cardioTotalSecs)}</div>
+        <div class="text-[10px] text-slate-500 uppercase">Tiempo</div>
+      </div>
+      <div class="text-center">
+        <div class="text-lg font-bold font-mono">{cardioTotalKcal}</div>
+        <div class="text-[10px] text-slate-500 uppercase">kcal</div>
+      </div>
+    </div>
+    <!-- Lista de sesiones individuales -->
+    <div class="space-y-1">
+      {#each todayCardio as c (c.id)}
+        <button class="w-full flex items-center gap-2 text-xs text-left p-2 rounded-lg hover:bg-slate-50 transition"
+                on:click={() => navigate('cardio_detail', { id: c.id })}>
+          <span class="text-lg">{CARDIO_ICONS[c.type] ?? '🏃'}</span>
+          <span class="font-mono font-bold">{formatDistance(c.distanceMeters)}</span>
+          <span class="text-slate-400">·</span>
+          <span class="font-mono">{formatDuration(c.durationSeconds)}</span>
+          <span class="text-slate-400 ml-auto text-[10px]">{new Date(c.startedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
+        </button>
+      {/each}
+    </div>
+  {/if}
+</div>
 
 <!-- Card entreno de hoy -->
 <div class="card mb-3">

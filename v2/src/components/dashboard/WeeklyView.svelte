@@ -6,7 +6,9 @@
   import {
     toDateKey, startOfWeek, endOfWeek, dateRange, isSameDay, isoDayOfWeek, WEEKDAYS_SHORT
   } from '$lib/dateUtils';
-  import { getSessionsBetween, getMealLogsBetween, getSleepBetween, buildDayStatus, type DayStatus } from '$lib/dashboardData';
+  import { getSessionsBetween, getMealLogsBetween, getSleepBetween, getCardioBetween, buildDayStatus, type DayStatus } from '$lib/dashboardData';
+  import { formatDistance, formatDuration } from '$lib/cardio/cardioTracker';
+  const CARDIO_ICONS: Record<string, string> = { walk: '🚶', run: '🏃', bike: '🚴', elliptical: '🤖' };
   import { summarizeDay } from '$lib/training/daySummary';
   import { detectAllStagnations, type StrengthStagnation } from '$lib/training/strengthStagnation';
   import ProgressCard from './ProgressCard.svelte';
@@ -72,12 +74,13 @@
     loading = true;
     const sKey = toDateKey(start);
     const eKey = toDateKey(end);
-    const [sessions, mealLogs, sleep] = await Promise.all([
+    const [sessions, mealLogs, sleep, cardio] = await Promise.all([
       getSessionsBetween(sKey, eKey),
       getMealLogsBetween(sKey, eKey),
-      getSleepBetween(sKey, eKey)
+      getSleepBetween(sKey, eKey),
+      getCardioBetween(sKey, eKey)
     ]);
-    statuses = days.map(d => buildDayStatus(toDateKey(d), sessions, mealLogs, sleep));
+    statuses = days.map(d => buildDayStatus(toDateKey(d), sessions, mealLogs, sleep, cardio));
     loading = false;
   }
 
@@ -263,10 +266,28 @@
       {/if}
 
       <!-- Stats compactas del día -->
-      <div class="flex items-center gap-3 text-[11px] text-slate-500 mb-3">
+      <div class="flex items-center gap-3 text-[11px] text-slate-500 mb-2">
         <span>🥗 {st?.mealsLogged ?? 0} comidas</span>
         {#if st?.sleepMinutes != null}<span>🛌 {sleepFmt(st.sleepMinutes)}</span>{/if}
       </div>
+
+      <!-- Cardio del día (si hay) -->
+      {#if st && st.cardioCount > 0}
+        <div class="bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-2 mb-3">
+          <div class="flex items-center gap-1 text-xs">
+            {#each st.cardioTypes as t}<span>{CARDIO_ICONS[t] ?? '🏃'}</span>{/each}
+            <span class="font-bold text-emerald-700 ml-1">
+              {formatDistance(st.cardioDistanceMeters)} · {formatDuration(st.cardioDurationSeconds)}
+            </span>
+            {#if st.cardioKcal > 0}
+              <span class="text-[10px] text-emerald-600 ml-auto">~{st.cardioKcal} kcal</span>
+            {/if}
+          </div>
+          {#if st.cardioCount > 1}
+            <div class="text-[10px] text-emerald-600 mt-0.5">{st.cardioCount} sesiones</div>
+          {/if}
+        </div>
+      {/if}
 
       <!-- 🕐 Horario compacto del día -->
       {#if $profile}

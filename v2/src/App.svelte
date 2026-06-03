@@ -39,7 +39,9 @@
     onDataChange(markDirty);
   });
 
-  $: showNavs = $profile && $currentRoute !== 'onboarding';
+  // En cardio_live ocultamos la BottomNav y el SideNav: es pantalla inmersiva
+  // (si no, la barra fija inferior tapa los botones de pausar/finalizar)
+  $: showNavs = $profile && $currentRoute !== 'onboarding' && $currentRoute !== 'cardio_live';
 </script>
 
 <!-- Sidebar de desktop -->
