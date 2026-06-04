@@ -184,19 +184,31 @@
             </div>
           </div>
 
-          <!-- 📊 Última sesión (sobrecarga progresiva) -->
+          <!-- 📊 Última sesión (sobrecarga progresiva) — serie por serie -->
           {#if sug?.lastSession}
             <div class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-2 text-xs">
-              <div class="flex items-center justify-between">
+              <div class="flex items-center justify-between mb-1.5">
                 <span class="font-bold text-slate-700">Última sesión</span>
                 <span class="text-slate-400 text-[10px]">
                   {new Date(sug.lastSession.date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}
                 </span>
               </div>
-              <div class="mt-1 text-slate-600 font-mono">
-                {#if sug.lastSession.workingWeightKg}{sug.lastSession.workingWeightKg}kg ·{/if}
-                {sug.lastSession.maxReps} reps · RIR {sug.lastSession.minRIR} · {sug.lastSession.setsDone} series
-              </div>
+              {#if sug.lastSession.sets && sug.lastSession.sets.length > 0}
+                <div class="flex flex-wrap gap-1">
+                  {#each sug.lastSession.sets as set, i}
+                    <span class="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-md px-1.5 py-0.5 font-mono">
+                      <span class="text-slate-400">{i + 1}</span>
+                      {#if set.weightKg != null}<span class="font-bold text-slate-800">{set.weightKg}kg</span>{/if}
+                      <span class="text-slate-600">×{set.reps}</span>
+                      {#if set.rir != null}<span class="text-slate-400">·R{set.rir}</span>{/if}
+                    </span>
+                  {/each}
+                </div>
+              {:else}
+                <div class="text-slate-600 font-mono">
+                  {#if sug.lastSession.workingWeightKg}{sug.lastSession.workingWeightKg}kg · {/if}{sug.lastSession.maxReps} reps · {sug.lastSession.setsDone} series
+                </div>
+              {/if}
             </div>
           {/if}
 

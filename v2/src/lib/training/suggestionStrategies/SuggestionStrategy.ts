@@ -59,6 +59,14 @@ export function buildLastSummary(
     workingWeightKg: workingWeight > 0 ? workingWeight : null,
     maxReps,
     minRIR,
-    setsDone: sets.length
+    setsDone: sets.length,
+    // Detalle real serie por serie, en el orden en que se ejecutaron
+    sets: [...sets]
+      .sort((a, b) => a.setNumber - b.setNumber)
+      .map(s => ({
+        weightKg: s.weightKg ?? null,
+        reps: s.reps,
+        rir: s.rir ?? null
+      }))
   };
 }

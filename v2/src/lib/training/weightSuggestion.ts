@@ -33,12 +33,21 @@ export type SuggestionStatus =
   | 'progress_variant'   // calistenia: pasa a siguiente variante
   | 'add_reps';          // calistenia: +reps sin cambiar variante
 
+/** Detalle de una serie individual de la última sesión. */
+export interface LastSetDetail {
+  weightKg: number | null;
+  reps: number;
+  rir: number | null;
+}
+
 export interface LastSessionSummary {
   date: string;
   workingWeightKg: number | null;
   maxReps: number;
   minRIR: number; // peor caso (más cerca del fallo)
   setsDone: number;
+  /** Detalle serie por serie (peso × reps × RIR), en orden de ejecución. */
+  sets: LastSetDetail[];
 }
 
 export interface WeightSuggestion {
