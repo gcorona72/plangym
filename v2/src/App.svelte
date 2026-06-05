@@ -8,8 +8,8 @@
   import { activeExercise, closeExercise } from '$stores/exerciseModal';
   import RecipeDetail from '$components/RecipeDetail.svelte';
   import { activeRecipe, closeRecipe } from '$stores/recipeModal';
-  import { syncState } from '$stores/sync';
-  import { startAutoSync, markDirty } from '$lib/cloudSync';
+  import { auth } from '$stores/auth';
+  import { startAutoSync, markDirty } from '$lib/sync/syncEngine';
   import { onDataChange } from '$db/database';
   import Onboarding from '$components/Onboarding.svelte';
   import Dashboard from '$components/Dashboard.svelte';
@@ -31,11 +31,11 @@
     if (!p) {
       navigate('onboarding');
     }
-    // Iniciar sync si está activado
-    if ($syncState.enabled && $syncState.pin) {
+    // Iniciar sync si hay cuenta logueada
+    if ($auth.token) {
       startAutoSync();
     }
-    // Cuando IndexedDB cambie → marcar dirty (debounced upload)
+    // Cuando IndexedDB cambie → push debounced (si hay cuenta)
     onDataChange(markDirty);
   });
 

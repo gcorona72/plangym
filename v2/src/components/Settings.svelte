@@ -7,8 +7,8 @@
   import { navigate } from '$stores/navigation';
   import { onMount } from 'svelte';
   import { db } from '$db/database';
-  import { syncState } from '$stores/sync';
-  import { startAutoSync, stopAutoSync, pullFromCloud, checkCloudForPin, initialPush } from '$lib/cloudSync';
+  import { auth, login, register, logout } from '$stores/auth';
+  import { startAutoSync, stopAutoSync, fullSync, resetSyncMeta, syncEngineState } from '$lib/sync/syncEngine';
 
   let allPrograms: TrainingProgram[] = [];
   let activeProgramId: string = '';
@@ -33,89 +33,54 @@
 
   let activeTab: 'profile' | 'preferences' | 'equipment' | 'data' | 'sync' | 'about' = 'profile';
 
-  // ─── SYNC ──────────────────────────────────────────────────────────────
-  let syncPinInput: string = '';
+  // ─── SYNC (cuenta email + contraseña) ──────────────────────────────────
+  let authMode: 'login' | 'register' = 'login';
+  let emailInput: string = '';
+  let passwordInput: string = '';
   let syncBusy: boolean = false;
   let syncFeedback: string = '';
 
-  async function enableSync() {
-    if (syncPinInput.length < 6) {
-      alert('El PIN debe tener al menos 6 caracteres (mejor 8+, letras y números)');
+  async function doAuth() {
+    if (!emailInput.includes('@') || passwordInput.length < 8) {
+      syncFeedback = '❌ Email válido y contraseña de 8+ caracteres.';
       return;
     }
     syncBusy = true;
     syncFeedback = '';
-    try {
-      // Comprobar si ya hay datos en la nube con este PIN
-      const check = await checkCloudForPin(syncPinInput);
-      if (check === 'error') {
-        syncFeedback = '❌ Error al conectar con el servidor de sync';
-        syncBusy = false;
-        return;
-      }
-
-      if (check === 'has_data') {
-        const confirmReplace = confirm(
-          '⚠️ Ya hay datos en la nube con este PIN.\n\n' +
-          '¿Quieres SOBRESCRIBIR tus datos locales con los de la nube?\n\n' +
-          'Si dices SÍ → tus datos locales actuales se perderán y se reemplazan por los de la nube.\n' +
-          'Si dices NO → tus datos locales SOBRESCRIBIRÁN los de la nube en cuanto actives sync.'
-        );
-        syncState.enable(syncPinInput);
-        if (confirmReplace) {
-          // Pull forzado: descarga la nube y reemplaza local
-          const result = await pullFromCloud(true);
-          if (result.status === 'pulled') {
-            syncFeedback = '✓ Datos descargados de la nube. Recarga la app para verlos.';
-          } else {
-            syncFeedback = '⚠️ ' + (result.message ?? 'No se pudo descargar');
-          }
-        } else {
-          // Activar y subir local (sobrescribir nube)
-          await initialPush();
-          syncFeedback = '✓ Sync activado. Tus datos locales se han subido a la nube.';
-        }
-      } else {
-        // Nube vacía → activar y subir
-        syncState.enable(syncPinInput);
-        await initialPush();
-        syncFeedback = '✓ Sync activado. Tus datos se han subido a la nube por primera vez.';
-      }
-      await startAutoSync();
-      syncPinInput = '';
-    } catch (e) {
-      syncFeedback = '❌ Error: ' + (e as Error).message;
-    } finally {
-      syncBusy = false;
-    }
-  }
-
-  function disableSync() {
-    if (!confirm('¿Desactivar sincronización? Tus datos locales se quedan. Los de la nube no se borran (puedes volver a activar con el mismo PIN).')) return;
-    stopAutoSync();
-    syncState.disable();
-    syncFeedback = '✓ Sync desactivado.';
-  }
-
-  async function manualPull() {
-    syncBusy = true;
-    const result = await pullFromCloud(true);
-    if (result.status === 'pulled') {
-      syncFeedback = '✓ Descargado de la nube. Recarga para ver los cambios.';
-    } else if (result.status === 'no_cloud_data') {
-      syncFeedback = '⚠️ No hay datos en la nube.';
-    } else if (result.status === 'unchanged') {
-      syncFeedback = 'ℹ️ Ya estás al día.';
+    const fn = authMode === 'register' ? register : login;
+    const res = await fn(emailInput.trim().toLowerCase(), passwordInput);
+    if (res.ok) {
+      // Empezamos limpio el estado de sync de esta cuenta y sincronizamos
+      resetSyncMeta();
+      syncFeedback = authMode === 'register'
+        ? '✓ Cuenta creada. Sincronizando tus datos…'
+        : '✓ Sesión iniciada. Sincronizando…';
+      passwordInput = '';
+      startAutoSync();
     } else {
-      syncFeedback = '❌ ' + (result.message ?? 'Error');
+      const map: Record<string, string> = {
+        email_taken: 'Ese email ya tiene cuenta. Cambia a "Iniciar sesión".',
+        invalid_credentials: 'Email o contraseña incorrectos.',
+        weak_password: 'La contraseña debe tener mínimo 8 caracteres.',
+        invalid_email: 'Email no válido.',
+        network: 'Sin conexión con el servidor.'
+      };
+      syncFeedback = '❌ ' + (map[res.error ?? ''] ?? res.message ?? 'Error');
     }
     syncBusy = false;
   }
 
-  async function manualPush() {
+  function doLogout() {
+    if (!confirm('¿Cerrar sesión? Tus datos locales se quedan en este dispositivo. Vuelve a entrar con el mismo email para resincronizar.')) return;
+    stopAutoSync();
+    resetSyncMeta();
+    logout();
+    syncFeedback = '✓ Sesión cerrada.';
+  }
+
+  async function syncNow() {
     syncBusy = true;
-    await initialPush();
-    syncFeedback = '✓ Subido a la nube.';
+    await fullSync();
     syncBusy = false;
   }
 
@@ -649,77 +614,84 @@
 
   {#if activeTab === 'sync'}
     <div class="space-y-3">
-      <!-- Estado actual -->
-      {#if $syncState.enabled}
+      {#if $auth.token}
+        <!-- Sesión iniciada -->
         <div class="card-feature ring-2 ring-emerald-300">
           <div class="flex items-center gap-3">
             <span class="text-3xl">☁️</span>
-            <div class="flex-1">
-              <div class="font-bold text-emerald-700">Sync activado</div>
-              <div class="text-xs text-slate-500">
+            <div class="flex-1 min-w-0">
+              <div class="font-bold text-emerald-700">Sincronización activa</div>
+              <div class="text-xs text-slate-600 truncate">{$auth.email}</div>
+              <div class="text-xs text-slate-500 mt-0.5">
                 Estado:
-                {#if $syncState.status === 'syncing'}
+                {#if $syncEngineState.status === 'syncing'}
                   <span class="text-blue-600 font-semibold">sincronizando…</span>
-                {:else if $syncState.status === 'error'}
+                {:else if $syncEngineState.status === 'error'}
                   <span class="text-red-600 font-semibold">error</span>
                 {:else}
                   <span class="text-emerald-600 font-semibold">al día</span>
                 {/if}
-                · Última sync: {fmtLastSync($syncState.lastSyncAt)}
+                · {fmtLastSync($syncEngineState.lastSyncAt)}
               </div>
-              {#if $syncState.lastError}
-                <div class="text-[10px] text-red-500 mt-1">{$syncState.lastError}</div>
+              {#if $syncEngineState.lastError}
+                <div class="text-[10px] text-red-500 mt-1">{$syncEngineState.lastError}</div>
               {/if}
             </div>
           </div>
         </div>
 
         <div class="card">
-          <h3 class="section-title mb-2">PIN actual</h3>
-          <div class="font-mono text-lg bg-slate-100 rounded-lg px-3 py-2 text-center select-all">{$syncState.pin}</div>
-          <p class="text-[10px] text-slate-500 mt-2">
-            Usa este PIN en otros dispositivos para acceder a los mismos datos.
-            <b>No lo compartas con nadie.</b>
+          <p class="text-xs text-slate-600 mb-3">
+            Inicia sesión con el <b>mismo email</b> en tu otro dispositivo y tus datos
+            se mantendrán sincronizados automáticamente (cada 20s + al hacer cambios).
           </p>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2">
-          <button class="btn-secondary" disabled={syncBusy} on:click={manualPull}>
-            📥 Bajar de la nube
-          </button>
-          <button class="btn-secondary" disabled={syncBusy} on:click={manualPush}>
-            📤 Subir ahora
+          <button class="btn-secondary w-full" disabled={syncBusy} on:click={syncNow}>
+            {syncBusy ? 'Sincronizando…' : '🔄 Sincronizar ahora'}
           </button>
         </div>
 
-        <button class="btn-secondary w-full text-red-600" on:click={disableSync}>
-          🛑 Desactivar sync
+        <button class="btn-secondary w-full text-red-600" on:click={doLogout}>
+          🚪 Cerrar sesión
         </button>
       {:else}
-        <!-- Activar sync -->
+        <!-- Login / registro -->
         <div class="card-feature">
-          <h3 class="font-bold text-lg mb-2">☁️ Sincronización en la nube</h3>
-          <p class="text-sm text-slate-700 mb-3">
-            Activa el sync para que tus datos se compartan automáticamente entre PC y móvil.
-            Crea un <b>PIN secreto</b> (mínimo 6 caracteres, mejor 8+ letras y números) y úsalo en
-            todos tus dispositivos.
+          <h3 class="font-bold text-lg mb-2">☁️ Sincroniza entre tus dispositivos</h3>
+          <p class="text-sm text-slate-700 mb-2">
+            Crea una cuenta para que tus datos (entrenos, comidas, peso, cardio…)
+            se sincronicen automáticamente entre el móvil y el PC.
           </p>
-          <ul class="text-xs text-slate-600 space-y-1 mb-3">
-            <li>✓ Tus datos se cifran con tu PIN (nunca sale del navegador)</li>
-            <li>✓ Sincronización automática cada 10 segundos si hay cambios</li>
-            <li>✓ Gratuito (alojado en Netlify Blobs)</li>
+          <ul class="text-xs text-slate-600 space-y-1">
+            <li>✓ Sincronización por registro — sin perder datos</li>
+            <li>✓ Contraseña cifrada (PBKDF2), nunca se guarda en claro</li>
+            <li>✓ Gratis, alojado en Cloudflare</li>
           </ul>
         </div>
 
+        <div class="flex gap-1 bg-white p-1 rounded-xl border border-slate-200">
+          <button class="flex-1 py-2 rounded-lg text-sm font-semibold transition"
+                  class:bg-primary-600={authMode === 'login'}
+                  class:text-white={authMode === 'login'}
+                  on:click={() => authMode = 'login'}>Iniciar sesión</button>
+          <button class="flex-1 py-2 rounded-lg text-sm font-semibold transition"
+                  class:bg-primary-600={authMode === 'register'}
+                  class:text-white={authMode === 'register'}
+                  on:click={() => authMode = 'register'}>Crear cuenta</button>
+        </div>
+
         <div class="card">
-          <label class="label" for="sync-pin">PIN secreto</label>
-          <input id="sync-pin" type="text" bind:value={syncPinInput} class="input font-mono" placeholder="Ej: gatoNegro2026" minlength="6" autocomplete="off" />
-          <p class="text-[10px] text-slate-500 mt-1">
-            ⚠️ Si lo olvidas, no podrás recuperar los datos de la nube. Apúntalo.
-          </p>
-          <button class="btn-accent w-full mt-3" disabled={syncBusy || syncPinInput.length < 6} on:click={enableSync}>
-            {syncBusy ? 'Procesando…' : '🚀 Activar sincronización'}
+          <label class="label" for="auth-email">Email</label>
+          <input id="auth-email" type="email" bind:value={emailInput} class="input" placeholder="tu@email.com" autocomplete="email" />
+          <label class="label mt-3" for="auth-pass">Contraseña</label>
+          <input id="auth-pass" type="password" bind:value={passwordInput} class="input" placeholder="mínimo 8 caracteres" autocomplete={authMode === 'register' ? 'new-password' : 'current-password'} />
+          <button class="btn-accent w-full mt-3" disabled={syncBusy} on:click={doAuth}>
+            {syncBusy ? 'Procesando…' : authMode === 'register' ? '🚀 Crear cuenta y sincronizar' : '🔑 Iniciar sesión'}
           </button>
+          {#if authMode === 'register'}
+            <p class="text-[10px] text-slate-500 mt-2">
+              ⚠️ Apunta tu contraseña. No hay recuperación por email (app personal).
+            </p>
+          {/if}
         </div>
       {/if}
 

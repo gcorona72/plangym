@@ -1,7 +1,8 @@
 <script lang="ts">
   import { currentRoute, navigate, type Route } from '$stores/navigation';
   import { profile } from '$stores/profile';
-  import { syncState } from '$stores/sync';
+  import { auth } from '$stores/auth';
+  import { syncEngineState } from '$lib/sync/syncEngine';
 
   const tabs: { route: Route; label: string; icon: string }[] = [
     { route: 'dashboard',  label: 'Hoy',         icon: '🏠' },
@@ -44,11 +45,11 @@
   <!-- Estado de sync -->
   <button class="flex items-center gap-2 px-2 py-2 rounded-lg text-[11px] hover:bg-slate-100 transition w-full text-left"
           on:click={() => navigate('settings')}>
-    {#if $syncState.enabled}
-      {#if $syncState.status === 'syncing'}
+    {#if $auth.token}
+      {#if $syncEngineState.status === 'syncing'}
         <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
         <span class="text-slate-600">Sincronizando…</span>
-      {:else if $syncState.status === 'error'}
+      {:else if $syncEngineState.status === 'error'}
         <span class="w-2 h-2 rounded-full bg-red-500"></span>
         <span class="text-red-600">Error de sync</span>
       {:else}
