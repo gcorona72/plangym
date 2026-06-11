@@ -413,6 +413,18 @@ export interface WeightLog {
   createdAt: string;
 }
 
+// ─── LOGROS ─────────────────────────────────────────────────────────────────
+/**
+ * Logro desbloqueado, persistido en IndexedDB (y sincronizado).
+ * El catálogo de logros (títulos, umbrales, iconos) vive en código
+ * (lib/achievements.ts); aquí solo se guarda QUÉ se desbloqueó y CUÁNDO.
+ */
+export interface UnlockedAchievement {
+  /** Id del logro en el catálogo (ej: 'sessions_10'). */
+  id: string;
+  unlockedAt: string; // ISO datetime
+}
+
 // ─── AJUSTES ────────────────────────────────────────────────────────────────
 export interface AppSettings {
   id: 1;

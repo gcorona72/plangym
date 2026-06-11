@@ -104,5 +104,5 @@ export function isValidEmail(email: string): boolean {
 /** Stores permitidos para sync (mismas tablas de IndexedDB). */
 export const ALLOWED_STORES = new Set([
   'profile', 'settings', 'programs', 'sessions',
-  'mealLogs', 'sleep', 'weightLogs', 'cardioSessions', 'recipes'
+  'mealLogs', 'sleep', 'weightLogs', 'cardioSessions', 'recipes', 'achievements'
 ]);

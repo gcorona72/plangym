@@ -209,7 +209,7 @@
   <h1 class="text-3xl font-bold mb-4">Ajustes ⚙️</h1>
 
   <!-- Acceso rápido a Peso / Guía en móvil (en desktop ya están en SideNav) -->
-  <div class="grid grid-cols-3 gap-2 mb-4 md:hidden">
+  <div class="grid grid-cols-4 gap-2 mb-4 md:hidden">
     <button class="card-compact text-center active:scale-95" on:click={() => navigate('weight')}>
       <div class="text-2xl">⚖️</div>
       <div class="text-xs font-semibold mt-1">Peso</div>
@@ -217,6 +217,10 @@
     <button class="card-compact text-center active:scale-95" on:click={() => navigate('sleep')}>
       <div class="text-2xl">🛌</div>
       <div class="text-xs font-semibold mt-1">Sueño</div>
+    </button>
+    <button class="card-compact text-center active:scale-95" on:click={() => navigate('achievements')}>
+      <div class="text-2xl">🏆</div>
+      <div class="text-xs font-semibold mt-1">Logros</div>
     </button>
     <button class="card-compact text-center active:scale-95" on:click={() => navigate('help')}>
       <div class="text-2xl">💡</div>

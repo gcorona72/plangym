@@ -10,7 +10,8 @@ import type {
   SleepEntry,
   AppSettings,
   WeightLog,
-  CardioSession
+  CardioSession,
+  UnlockedAchievement
 } from '$lib/types';
 
 /**
@@ -32,6 +33,7 @@ class PlanGymDB extends Dexie {
   sleep!: Table<SleepEntry, string>;
   weightLogs!: Table<WeightLog, string>;
   cardioSessions!: Table<CardioSession, string>;
+  achievements!: Table<UnlockedAchievement, string>;
 
   constructor() {
     super('PlanGymDB');
@@ -54,6 +56,10 @@ class PlanGymDB extends Dexie {
     // v3: tabla de sesiones de cardio (GPS + indoor)
     this.version(3).stores({
       cardioSessions: 'id, date, type, startedAt'
+    });
+    // v4: logros desbloqueados (gamificación)
+    this.version(4).stores({
+      achievements: 'id, unlockedAt'
     });
   }
 }
@@ -79,7 +85,7 @@ export function emitDataChange(): void {
 }
 
 // Hookeamos las tablas que cambian con frecuencia
-for (const table of [db.profile, db.sessions, db.mealLogs, db.sleep, db.weightLogs, db.recipes, db.cardioSessions]) {
+for (const table of [db.profile, db.sessions, db.mealLogs, db.sleep, db.weightLogs, db.recipes, db.cardioSessions, db.achievements]) {
   // Dexie permite hooks pero los hooks corren dentro de la transacción.
   // Disparamos `emitDataChange` después de commitear via setTimeout(0).
   (table as any).hook('creating', () => { setTimeout(emitDataChange, 0); });
@@ -113,7 +119,8 @@ export async function exportAllData(): Promise<string> {
     mealLogs: await db.mealLogs.toArray(),
     sleep: await db.sleep.toArray(),
     weightLogs: await db.weightLogs.toArray(),
-    cardioSessions: await db.cardioSessions.toArray()
+    cardioSessions: await db.cardioSessions.toArray(),
+    achievements: await db.achievements.toArray()
   };
   return JSON.stringify(data, null, 2);
 }
@@ -131,7 +138,7 @@ export async function importAllData(json: string): Promise<void> {
   await db.transaction(
     'rw',
     [db.profile, db.settings, db.exercises, db.programs, db.sessions,
-     db.ingredients, db.recipes, db.mealLogs, db.sleep, db.weightLogs, db.cardioSessions],
+     db.ingredients, db.recipes, db.mealLogs, db.sleep, db.weightLogs, db.cardioSessions, db.achievements],
     async () => {
       await Promise.all([
         db.profile.clear(),
@@ -144,7 +151,8 @@ export async function importAllData(json: string): Promise<void> {
         db.mealLogs.clear(),
         db.sleep.clear(),
         db.weightLogs.clear(),
-        db.cardioSessions.clear()
+        db.cardioSessions.clear(),
+        db.achievements.clear()
       ]);
 
       if (Array.isArray(data.profile)) await db.profile.bulkAdd(data.profile);
@@ -158,6 +166,7 @@ export async function importAllData(json: string): Promise<void> {
       if (Array.isArray(data.sleep)) await db.sleep.bulkAdd(data.sleep);
       if (Array.isArray(data.weightLogs)) await db.weightLogs.bulkAdd(data.weightLogs);
       if (Array.isArray(data.cardioSessions)) await db.cardioSessions.bulkAdd(data.cardioSessions);
+      if (Array.isArray(data.achievements)) await db.achievements.bulkAdd(data.achievements);
     }
   );
 }

@@ -35,7 +35,11 @@
 {#if metrics}
   <!-- Cabecera motivacional -->
   <div class="card-feature mb-3">
-    <div class="font-bold text-lg mb-3">{motivationalMessage(metrics)}</div>
+    <div class="flex items-start justify-between gap-2 mb-3">
+      <div class="font-bold text-lg">{motivationalMessage(metrics)}</div>
+      <button class="shrink-0 text-2xl active:scale-90 transition" title="Ver logros"
+              on:click={() => navigate('achievements')}>🏆</button>
+    </div>
 
     <!-- KPIs principales (2×2) -->
     <div class="grid grid-cols-2 gap-3">

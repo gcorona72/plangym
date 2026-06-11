@@ -25,6 +25,7 @@
   import Cardio from '$components/Cardio.svelte';
   import CardioLive from '$components/CardioLive.svelte';
   import CardioDetail from '$components/CardioDetail.svelte';
+  import Achievements from '$components/Achievements.svelte';
 
   onMount(async () => {
     const p = await loadProfile();
@@ -84,6 +85,8 @@
         <CardioLive />
       {:else if $currentRoute === 'cardio_detail'}
         <CardioDetail />
+      {:else if $currentRoute === 'achievements'}
+        <Achievements />
       {/if}
     </div>
   {/key}

@@ -92,7 +92,7 @@ function sessionVolume(session: WorkoutSession, bodyWeightKg: number): number {
  * Cumplir = (a) había sesión planificada y se hizo, o (b) hubo al menos 1 comida registrada
  * en un día de descanso.
  */
-async function computeStreak(): Promise<number> {
+export async function computeStreak(): Promise<number> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   let streak = 0;

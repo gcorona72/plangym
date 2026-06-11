@@ -10,6 +10,7 @@
     { route: 'nutrition',  label: 'Nutrición',   icon: '🥗' },
     { route: 'shopping',   label: 'Compra',      icon: '🛒' },
     { route: 'cardio',     label: 'Cardio',      icon: '🚴' },
+    { route: 'achievements', label: 'Logros',    icon: '🏆' },
     { route: 'weight',     label: 'Peso',        icon: '⚖️' },
     { route: 'sleep',      label: 'Sueño',       icon: '🛌' },
     { route: 'help',       label: 'Guía',        icon: '💡' },

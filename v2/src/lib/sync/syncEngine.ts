@@ -30,7 +30,8 @@ const SYNC_STORES: { name: string; table: () => Table<any, any> }[] = [
   { name: 'sleep',          table: () => db.sleep },
   { name: 'weightLogs',     table: () => db.weightLogs },
   { name: 'cardioSessions', table: () => db.cardioSessions },
-  { name: 'recipes',        table: () => db.recipes }
+  { name: 'recipes',        table: () => db.recipes },
+  { name: 'achievements',   table: () => db.achievements }
 ];
 
 const META_KEY = 'plangym_syncmeta';
