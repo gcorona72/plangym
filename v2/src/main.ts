@@ -2,6 +2,10 @@ import './app.css';
 import App from './App.svelte';
 import { runSeeds } from '$db/seedRunner';
 import { registerSW } from 'virtual:pwa-register';
+import { initTheme } from '$stores/theme';
+
+// Tema (claro/oscuro/auto) antes del primer render para evitar flash
+initTheme();
 
 // PWA: actualización automática del Service Worker
 registerSW({ immediate: true });

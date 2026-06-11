@@ -8,6 +8,13 @@
   import { onMount } from 'svelte';
   import { db } from '$db/database';
   import { auth, login, register, logout } from '$stores/auth';
+  import { theme, setTheme, type ThemeMode } from '$stores/theme';
+
+  const THEME_OPTIONS: { mode: ThemeMode; label: string }[] = [
+    { mode: 'light', label: '☀️ Claro' },
+    { mode: 'dark',  label: '🌙 Oscuro' },
+    { mode: 'auto',  label: '⚙️ Auto' }
+  ];
   import { startAutoSync, stopAutoSync, fullSync, resetSyncMeta, syncEngineState } from '$lib/sync/syncEngine';
 
   let allPrograms: TrainingProgram[] = [];
@@ -253,6 +260,22 @@
 
   {#if activeTab === 'profile' && $profile}
     <div class="space-y-3">
+      <div class="card">
+        <label class="label">Tema visual</label>
+        <div class="grid grid-cols-3 gap-2">
+          {#each THEME_OPTIONS as opt}
+            <button class="py-2.5 rounded-lg text-sm font-semibold border transition"
+                    class:bg-primary-600={$theme === opt.mode}
+                    class:text-white={$theme === opt.mode}
+                    class:border-primary-600={$theme === opt.mode}
+                    class:bg-white={$theme !== opt.mode}
+                    class:border-slate-200={$theme !== opt.mode}
+                    on:click={() => setTheme(opt.mode)}>{opt.label}</button>
+          {/each}
+        </div>
+        <p class="text-[10px] text-slate-500 mt-2">"Auto" sigue el modo del sistema (oscuro de noche si tu móvil lo hace solo).</p>
+      </div>
+
       <div class="card">
         <div class="grid grid-cols-2 gap-3">
           <div>
