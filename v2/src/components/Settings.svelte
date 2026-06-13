@@ -16,15 +16,35 @@
     { mode: 'auto',  label: '⚙️ Auto' }
   ];
   import { startAutoSync, stopAutoSync, fullSync, resetSyncMeta, syncEngineState } from '$lib/sync/syncEngine';
+  import { generateAndActivate } from '$lib/training/ProgramGenerator';
 
   let allPrograms: TrainingProgram[] = [];
   let activeProgramId: string = '';
+  let generating = false;
 
   onMount(async () => {
     allPrograms = await db.programs.toArray();
     const active = allPrograms.find(p => p.active);
     activeProgramId = active?.id ?? '';
   });
+
+  async function regenerateProgram() {
+    if (!$profile) return;
+    if (!confirm('Generar un programa nuevo a medida según tus días de entreno, nivel y equipamiento. Se activará automáticamente (tus programas anteriores se conservan). ¿Continuar?')) return;
+    generating = true;
+    try {
+      // Guardamos primero los días/nivel actuales del formulario por si no se han aplicado
+      await savePerfil();
+      const prog = await generateAndActivate($profile);
+      allPrograms = await db.programs.toArray();
+      activeProgramId = prog.id;
+      alert('✓ Programa generado y activado: ' + prog.name);
+    } catch (e) {
+      alert('Error generando el programa: ' + (e as Error).message);
+    } finally {
+      generating = false;
+    }
+  }
 
   async function switchProgram(id: string) {
     if (!confirm('¿Cambiar al programa "' + (allPrograms.find(p => p.id === id)?.name ?? '') + '"?')) return;
@@ -505,6 +525,24 @@
             Sin cardio programado. Pon 3-4 días para activarlo (fase recomp).
           {/if}
         </p>
+      </div>
+
+      <!-- Generador de programa a medida -->
+      <div class="card-feature">
+        <div class="flex items-start gap-3">
+          <span class="text-2xl">🤖</span>
+          <div class="flex-1">
+            <div class="font-bold">Generar mi programa a medida</div>
+            <p class="text-xs text-slate-600 mt-1">
+              Construye un plan según tus <b>{trainingDaysPerWeek} días/semana</b>,
+              tu nivel <b>{experienceLevel === 'beginner' ? 'principiante' : experienceLevel === 'intermediate' ? 'intermedio' : 'avanzado'}</b>
+              y tu equipamiento. Elige el split óptimo (Full Body / Upper-Lower / PPL) y los ejercicios automáticamente.
+            </p>
+            <button class="btn-primary py-2 px-3 text-xs mt-2" disabled={generating} on:click={regenerateProgram}>
+              {generating ? 'Generando…' : '⚡ Generar programa'}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="card">
