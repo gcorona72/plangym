@@ -32,10 +32,18 @@
 
 <div class="px-5 pt-8 max-w-2xl mx-auto md:max-w-4xl">
   <!-- Header -->
-  <header class="mb-6">
-    <p class="text-slate-500 text-sm">{greeting()},</p>
-    <h1 class="text-4xl font-bold tracking-tight">{$profile?.name ?? 'Hola'}</h1>
-    <p class="text-slate-500 text-sm mt-1 capitalize">{formatLong(new Date())}</p>
+  <header class="mb-6 flex items-start justify-between gap-3">
+    <div>
+      <p class="text-slate-500 text-sm">{greeting()},</p>
+      <h1 class="text-4xl font-bold tracking-tight">{$profile?.name ?? 'Hola'}</h1>
+      <p class="text-slate-500 text-sm mt-1 capitalize">{formatLong(new Date())}</p>
+    </div>
+    <button class="md:hidden shrink-0 flex flex-col items-center gap-0.5 card-compact px-3 py-2 active:scale-95"
+            on:click={() => navigate('coach')}
+            aria-label="Coach IA">
+      <span class="text-2xl">🧠</span>
+      <span class="text-[10px] font-semibold">Coach</span>
+    </button>
   </header>
 
   <!-- Selector de vista con indicador deslizante -->

@@ -26,6 +26,7 @@
   import CardioLive from '$components/CardioLive.svelte';
   import CardioDetail from '$components/CardioDetail.svelte';
   import Achievements from '$components/Achievements.svelte';
+  import Coach from '$components/Coach.svelte';
 
   onMount(async () => {
     const p = await loadProfile();
@@ -40,9 +41,10 @@
     onDataChange(markDirty);
   });
 
-  // En cardio_live ocultamos la BottomNav y el SideNav: es pantalla inmersiva
-  // (si no, la barra fija inferior tapa los botones de pausar/finalizar)
-  $: showNavs = $profile && $currentRoute !== 'onboarding' && $currentRoute !== 'cardio_live';
+  // En cardio_live y coach ocultamos navs: son pantallas inmersivas
+  // (la barra fija inferior estorbaría a sus controles / input de chat)
+  $: showNavs = $profile && $currentRoute !== 'onboarding'
+    && $currentRoute !== 'cardio_live' && $currentRoute !== 'coach';
 </script>
 
 <!-- Sidebar de desktop -->
@@ -87,6 +89,8 @@
         <CardioDetail />
       {:else if $currentRoute === 'achievements'}
         <Achievements />
+      {:else if $currentRoute === 'coach'}
+        <Coach />
       {/if}
     </div>
   {/key}
