@@ -7,6 +7,7 @@
   import { summarizeNutritionDay } from '$lib/nutrition/daySummary';
   import { filterRecipesForUser } from '$lib/nutrition/recipeFilter';
   import { profile } from '$stores/profile';
+  import { getNutritionMode, modeCopy } from '$lib/profileMode';
   import { navigate } from '$stores/navigation';
   import { openRecipe } from '$stores/recipeModal';
   import { toDateKey, isoDayOfWeek } from '$lib/dateUtils';
@@ -111,9 +112,14 @@
 
   // Tip de calorías líquidas: si está atardeciendo y queda más del 30% de kcal por consumir
   $: hour = new Date().getHours();
+  $: nutritionMode = getNutritionMode($profile);
+  $: copy = modeCopy(nutritionMode);
+  // El aviso de "vas corto" tiene sentido cuando faltan calorías. En déficit
+  // (cut) ir por debajo no es un problema, así que solo se muestra fuera de cut.
   $: showLiquidTip = $goals && hour >= 19 &&
     (totalsToday.kcal / $goals.targetKcal) < 0.7 &&
-    (todayLog?.meals.length ?? 0) > 0;
+    (todayLog?.meals.length ?? 0) > 0 &&
+    nutritionMode !== 'deficit';
 </script>
 
 <div class="px-5 pt-8 pb-6 max-w-2xl mx-auto md:max-w-4xl">
@@ -149,10 +155,9 @@
         <div class="flex items-start gap-2">
           <span class="text-2xl">💧</span>
           <div class="flex-1 min-w-0">
-            <div class="font-bold text-blue-800">Vas justo de calorías hoy</div>
+            <div class="font-bold text-blue-800">{copy.underTargetTitle}</div>
             <div class="text-sm text-blue-700 mt-1">
-              Te quedan {remaining} kcal y queda poco día. Un <b>batido hipercalórico</b>
-              (avena + leche entera + crema cacahuete + plátano) son ~800 kcal sin saciedad. Mejor que forzar comida sólida.
+              Te quedan {remaining} kcal y queda poco día. {copy.underTargetTip}
             </div>
           </div>
         </div>

@@ -29,7 +29,7 @@ export default defineConfig({
       manifest: {
         name: 'PlanGym · Entrenamiento y Nutrición',
         short_name: 'PlanGym',
-        description: 'Tu plan personal de entrenamiento, nutrición y sueño para ectomorfo en volumen.',
+        description: 'Tu plan personal de entrenamiento, nutrición y sueño, adaptado a tus objetivos.',
         theme_color: '#3b82f6',
         background_color: '#f8fafc',
         display: 'standalone',

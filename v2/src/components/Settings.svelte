@@ -342,7 +342,7 @@
               <span class="font-mono font-bold text-primary-600">+{surplusKcal} kcal</span>
               <span>{SURPLUS_RANGE.max}</span>
             </div>
-            <p class="text-[10px] text-slate-400 mt-1">Ectomorfos: 400-600 recomendado. Más = riesgo de grasa. Menos = progreso lento.</p>
+            <p class="text-[10px] text-slate-400 mt-1">400-600 recomendado para ganar masa limpia. Más = riesgo de grasa. Menos = progreso lento.</p>
           </div>
         {/if}
       </div>
