@@ -357,11 +357,14 @@ export function buildDailySchedule(
     icon: '🛌'
   });
 
-  // Apartar las comidas que caigan sobre un bloque de trabajo/clase
+  // Apartar las comidas que caigan sobre un bloque de trabajo/clase.
+  // El desayuno NO se mueve: va anclado a despertar (moverlo antes lo dejaría
+  // antes de levantarse, y moverlo después de la jornada no es un desayuno).
+  // Cualquier comida se mantiene siempre a partir de la hora de despertar.
   if (blocks.length > 0) {
     for (const e of entries) {
-      if (e.type === 'meal') {
-        const nudged = nudgeOutOfBlocks(e.minutes, blocks);
+      if (e.type === 'meal' && e.mealType !== 'breakfast') {
+        const nudged = Math.max(wake + 5, nudgeOutOfBlocks(e.minutes, blocks));
         if (nudged !== e.minutes) {
           e.minutes = nudged;
           e.time = toTimeStr(nudged);
