@@ -243,7 +243,7 @@ export interface WorkoutSet {
 }
 
 // ─── NUTRICIÓN ──────────────────────────────────────────────────────────────
-export type MealType = 'breakfast' | 'lunch' | 'pre_workout' | 'post_workout' | 'dinner' | 'snack';
+export type MealType = 'breakfast' | 'lunch' | 'midafternoon' | 'pre_workout' | 'post_workout' | 'dinner' | 'snack';
 
 export interface Macros {
   kcal: number;

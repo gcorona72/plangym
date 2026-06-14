@@ -66,10 +66,11 @@ export function calculateGoals(profile: UserProfile): DailyGoals {
  * Suma 100%. Calibrado para ectomorfo en volumen (5 comidas).
  */
 export const MEAL_RATIOS = {
-  breakfast: 0.22,
-  lunch: 0.30,
+  breakfast: 0.20,
+  lunch: 0.26,
+  midafternoon: 0.10,  // merienda: evita el bajón de 6-7h entre comida y cena
   pre_workout: 0.06,
   post_workout: 0.12,
-  dinner: 0.26,
+  dinner: 0.22,
   snack: 0.04
 } as const;

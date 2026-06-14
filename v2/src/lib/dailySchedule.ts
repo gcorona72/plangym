@@ -173,6 +173,25 @@ export function buildDailySchedule(profile: UserProfile, trainingDay: TrainingDa
   // ─── CENA ───────────────────────────────────────────────────────────────
   // 2-2.5h antes de dormir
   const dinner = bed - 150;
+
+  // ─── MERIENDA ───────────────────────────────────────────────────────────
+  // Si entre almuerzo y cena hay un hueco grande (>4h), metemos una merienda
+  // a mitad de camino. Repartir la proteína en más tomas (cada 3-4h) favorece
+  // la síntesis muscular y evita llegar con un hambre que descuadra las kcal.
+  // Si ya hay post-entreno en esa franja, no hace falta (ya rompe el ayuno).
+  const hasPostInGap = trainingMinutes != null && (trainingMinutes + 90) > lunch && (trainingMinutes + 90) < dinner;
+  if (dinner - lunch > 240 && !hasPostInGap) {
+    const snackPm = Math.round((lunch + dinner) / 2);
+    entries.push({
+      time: toTimeStr(snackPm),
+      minutes: snackPm,
+      type: 'meal',
+      mealType: 'midafternoon',
+      label: 'Merienda',
+      icon: '🥪',
+      hint: 'Yogur + fruta + frutos secos, o un bocadillo de pavo'
+    });
+  }
   entries.push({
     time: toTimeStr(dinner),
     minutes: dinner,

@@ -8,8 +8,9 @@ import { MEAL_RATIOS } from './macros';
 export const DAILY_MEAL_SLOTS: { type: MealType; label: string; icon: string; suggestedTime: string }[] = [
   { type: 'breakfast',    label: 'Desayuno',     icon: '🌅', suggestedTime: '08:00' },
   { type: 'lunch',        label: 'Comida',       icon: '🍽️', suggestedTime: '14:00' },
-  { type: 'pre_workout',  label: 'Pre-entreno',  icon: '⚡', suggestedTime: '17:30' },
-  { type: 'post_workout', label: 'Post-entreno', icon: '💪', suggestedTime: '19:30' },
+  { type: 'midafternoon', label: 'Merienda',     icon: '🥪', suggestedTime: '17:30' },
+  { type: 'pre_workout',  label: 'Pre-entreno',  icon: '⚡', suggestedTime: '18:30' },
+  { type: 'post_workout', label: 'Post-entreno', icon: '💪', suggestedTime: '20:30' },
   { type: 'dinner',       label: 'Cena',         icon: '🌙', suggestedTime: '21:30' },
   { type: 'snack',        label: 'Snack noche',  icon: '🍪', suggestedTime: '23:00' }
 ];
@@ -34,7 +35,12 @@ export function suggestRecipeForSlot(
   recipes: Recipe[],
   dateKey: string
 ): Recipe | undefined {
-  const matches = recipes.filter(r => r.mealTypes.includes(type));
+  // La merienda comparte recetas con el snack (no hay recetas marcadas
+  // específicamente como 'midafternoon'): tentempiés densos en proteína.
+  let matches = recipes.filter(r => r.mealTypes.includes(type));
+  if (matches.length === 0 && type === 'midafternoon') {
+    matches = recipes.filter(r => r.mealTypes.includes('snack'));
+  }
   if (matches.length === 0) return undefined;
 
   // 1) Aplicar plantilla semanal si existe para el día de la semana
