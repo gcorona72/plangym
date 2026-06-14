@@ -75,6 +75,26 @@ function nudgeOutOfBlocks(minutes: number, blocks: BlockRange[]): number {
   return minutes;
 }
 
+/**
+ * Coloca una comida (evento puntual) en el hueco libre más cercano a su hora
+ * ideal. Si la hora ideal ya está libre, la deja. Si cae en un bloque, busca
+ * la ventana libre cuyo punto más próximo a la hora ideal sea el más cercano
+ * y la coloca ahí. Esto hace que, si el usuario marca su pausa de comida como
+ * un hueco entre dos bloques de trabajo, el almuerzo caiga en esa pausa.
+ */
+function placeMealInFreeWindow(nominal: number, blocks: BlockRange[], floor: number, ceiling: number): number {
+  if (overlappingBlock(nominal, nominal + 1, blocks) == null) return nominal;
+  const windows = freeWindows(floor, ceiling, blocks).filter(w => w.end - w.start >= 20);
+  if (windows.length === 0) return nominal;
+  let best = nominal, bestDist = Infinity;
+  for (const w of windows) {
+    const p = Math.min(Math.max(nominal, w.start + 5), w.end - 5);
+    const d = Math.abs(p - nominal);
+    if (d < bestDist) { bestDist = d; best = p; }
+  }
+  return best;
+}
+
 /** Ventanas de tiempo LIBRES entre [from,to) descontando los bloques. */
 function freeWindows(from: number, to: number, blocks: BlockRange[]): { start: number; end: number }[] {
   const sorted = [...blocks].sort((a, b) => a.start - b.start);
@@ -357,17 +377,19 @@ export function buildDailySchedule(
     icon: '🛌'
   });
 
-  // Apartar las comidas que caigan sobre un bloque de trabajo/clase.
-  // El desayuno NO se mueve: va anclado a despertar (moverlo antes lo dejaría
-  // antes de levantarse, y moverlo después de la jornada no es un desayuno).
-  // Cualquier comida se mantiene siempre a partir de la hora de despertar.
+  // Colocar las comidas que caigan sobre un bloque (trabajo/clase) en el hueco
+  // libre más cercano. Si hay una pausa entre dos bloques (p. ej. descanso de
+  // comida 13:00-14:00), el almuerzo cae ahí. El desayuno NO se mueve: va
+  // anclado a despertar. Ninguna comida se coloca antes de despertar.
   if (blocks.length > 0) {
+    const floor = wake + 5;
+    const ceiling = bed - 20;
     for (const e of entries) {
       if (e.type === 'meal' && e.mealType !== 'breakfast') {
-        const nudged = Math.max(wake + 5, nudgeOutOfBlocks(e.minutes, blocks));
-        if (nudged !== e.minutes) {
-          e.minutes = nudged;
-          e.time = toTimeStr(nudged);
+        const placed = placeMealInFreeWindow(e.minutes, blocks, floor, ceiling);
+        if (placed !== e.minutes) {
+          e.minutes = placed;
+          e.time = toTimeStr(placed);
         }
       }
     }
