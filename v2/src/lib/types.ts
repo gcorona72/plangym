@@ -59,6 +59,14 @@ export interface UserProfile {
   wakeTarget: string | null;
   /** Cuándo prefiere ir al gym. Determina el cronograma diario sugerido. */
   gymTimePreference?: 'morning' | 'afternoon' | 'evening';
+  /**
+   * Cómo se decide la hora de entreno:
+   *  - 'auto':   la app busca el mejor hueco libre de cada día respetando la
+   *              agenda (trabajo/clase) y la franja preferida.
+   *  - 'manual': el usuario fija la hora (preferredGymTime / franja).
+   * Por defecto 'auto'.
+   */
+  gymTimeMode?: 'auto' | 'manual';
   /** Hora preferida fija para entrenar (opcional, sobrescribe la sugerencia). Ej: "11:30". */
   preferredGymTime?: string | null;
   /** Fecha en la que arrancó el ciclo actual de entrenamiento (12 semanas). */

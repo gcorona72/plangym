@@ -75,6 +75,52 @@ function nudgeOutOfBlocks(minutes: number, blocks: BlockRange[]): number {
   return minutes;
 }
 
+/** Ventanas de tiempo LIBRES entre [from,to) descontando los bloques. */
+function freeWindows(from: number, to: number, blocks: BlockRange[]): { start: number; end: number }[] {
+  const sorted = [...blocks].sort((a, b) => a.start - b.start);
+  const windows: { start: number; end: number }[] = [];
+  let cursor = from;
+  for (const b of sorted) {
+    if (b.end <= from || b.start >= to) continue;
+    if (b.start > cursor) windows.push({ start: cursor, end: Math.min(b.start, to) });
+    cursor = Math.max(cursor, b.end);
+    if (cursor >= to) break;
+  }
+  if (cursor < to) windows.push({ start: cursor, end: to });
+  return windows.filter(w => w.end > w.start);
+}
+
+/** Minuto-ancla del día según la franja preferida. */
+function anchorForPref(pref: string, wake: number): number {
+  if (pref === 'morning') return wake + 3 * 60;   // ~3h tras despertar
+  if (pref === 'afternoon') return 17 * 60;        // 17:00
+  return 18 * 60 + 30;                              // noche → 18:30
+}
+
+/**
+ * MODO AUTOMÁTICO: busca el inicio de entreno óptimo para un día.
+ * Coge la ventana libre (≥ `duration`) cuyo hueco quede más cerca de la franja
+ * preferida del usuario, dejando margen para cenar antes de dormir.
+ * Devuelve también las alternativas rankeadas (para mostrarlas si se quiere).
+ */
+export function findTrainingSlots(
+  wake: number, bed: number, blocks: BlockRange[], anchor: number, duration = 90
+): number[] {
+  const from = wake + 30;
+  const to = bed - 120; // 2h para cenar/digerir antes de dormir
+  let windows = freeWindows(from, to, blocks).filter(w => w.end - w.start >= duration);
+  if (windows.length === 0) {
+    // Relajar: permitir hasta 1h antes de dormir
+    windows = freeWindows(from, bed - 60, blocks).filter(w => w.end - w.start >= duration);
+  }
+  if (windows.length === 0) return [];
+  // Para cada ventana, el inicio más cercano al ancla
+  const cands = windows.map(w => Math.min(Math.max(anchor, w.start), w.end - duration));
+  // Ordenar por distancia al ancla
+  cands.sort((a, b) => Math.abs(a - anchor) - Math.abs(b - anchor));
+  return cands;
+}
+
 /**
  * Genera el cronograma ideal del día basado en:
  *  - Hora de despertar (wakeTarget)
@@ -126,25 +172,32 @@ export function buildDailySchedule(
     icon: '☀️'
   });
 
-  // Si hay entreno, decidir su hora según preferencia
+  // Si hay entreno, decidir su hora
+  const mode = profile.gymTimeMode ?? 'auto';
   let trainingMinutes: number | null = null;
+  let trainingAuto = false;
   if (!isRestDay) {
-    if (profile.preferredGymTime) {
+    if (mode === 'manual' && profile.preferredGymTime) {
+      // Manual con hora fija
       trainingMinutes = toMinutes(profile.preferredGymTime, 18 * 60);
+    } else if (mode === 'manual') {
+      // Manual por franja (horas fijas estándar)
+      trainingMinutes = anchorForPref(gymPref, wake);
     } else {
-      // Sugerencias estándar según preferencia (con margen de digestión)
-      if (gymPref === 'morning') {
-        trainingMinutes = wake + 3 * 60; // ~3h después de despertar (digestión)
-      } else if (gymPref === 'afternoon') {
-        trainingMinutes = 17 * 60;       // 17:00
+      // AUTOMÁTICO: mejor hueco libre del día según agenda + franja preferida.
+      // 105 min = sesión (~90) + margen para el batido post-entreno.
+      const anchor = anchorForPref(gymPref, wake);
+      const slots = findTrainingSlots(wake, bed, blocks, anchor, 105);
+      if (slots.length > 0) {
+        trainingMinutes = slots[0];
+        trainingAuto = true;
       } else {
-        trainingMinutes = 18 * 60 + 30;  // 18:30
+        trainingMinutes = anchor; // fallback si no hay hueco claro
       }
     }
-    // Evitar que el entreno (~90 min con calentamiento) caiga sobre trabajo/clase
-    if (blocks.length > 0) {
+    // Red de seguridad: si aún cae sobre un bloque (modo manual), apartarlo
+    if (blocks.length > 0 && !trainingAuto) {
       const moved = pushAfterBlocks(trainingMinutes, 90, blocks);
-      // Si moverlo lo deja demasiado tarde (después de la cena), mejor antes del bloque
       if (moved + 90 > bed - 120) {
         const firstBlock = blocks.find(b => trainingMinutes! < b.end && trainingMinutes! + 90 > b.start);
         if (firstBlock) trainingMinutes = Math.max(wake + 60, firstBlock.start - 90 - 15);
@@ -212,7 +265,7 @@ export function buildDailySchedule(
       type: 'training',
       label: 'Entrenamiento',
       icon: '🏋️',
-      hint: trainingDayName || 'Sesión de gym'
+      hint: (trainingDayName || 'Sesión de gym') + (trainingAuto && blocks.length > 0 ? ' · hora propuesta según tu agenda' : '')
     });
 
     // Post-entreno 30 min después del fin (sesión ~75 min)

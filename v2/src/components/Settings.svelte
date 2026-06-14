@@ -186,6 +186,7 @@
   let bedtimeTarget = $profile?.bedtimeTarget ?? '23:30';
   let wakeTarget = $profile?.wakeTarget ?? '09:00';
   let gymTimePreference: 'morning' | 'afternoon' | 'evening' = $profile?.gymTimePreference ?? 'morning';
+  let gymTimeMode: 'auto' | 'manual' = $profile?.gymTimeMode ?? 'auto';
   let preferredGymTime: string = $profile?.preferredGymTime ?? '';
   let cycleStartDate = $profile?.cycleStartDate ?? new Date().toISOString().split('T')[0];
   let equipment: Set<GymEquipmentId> = new Set($profile?.gymEquipment ?? []);
@@ -223,6 +224,7 @@
       bedtimeTarget,
       wakeTarget,
       gymTimePreference,
+      gymTimeMode,
       preferredGymTime: preferredGymTime || null,
       cycleStartDate,
       gymEquipment: Array.from(equipment)
@@ -629,8 +631,35 @@
           </div>
         </div>
 
+        <!-- Modo: automático vs manual -->
         <div class="mt-4">
-          <label class="label">¿Cuándo prefieres entrenar?</label>
+          <label class="label">Hora de entreno</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="py-2.5 rounded-lg text-sm font-semibold border transition text-left px-3"
+                    class:bg-primary-600={gymTimeMode === 'auto'}
+                    class:text-white={gymTimeMode === 'auto'}
+                    class:border-primary-600={gymTimeMode === 'auto'}
+                    class:bg-white={gymTimeMode !== 'auto'}
+                    class:border-slate-200={gymTimeMode !== 'auto'}
+                    on:click={() => gymTimeMode = 'auto'}>
+              🤖 Automática
+              <span class="block text-[10px] font-normal opacity-80">según tu agenda</span>
+            </button>
+            <button class="py-2.5 rounded-lg text-sm font-semibold border transition text-left px-3"
+                    class:bg-primary-600={gymTimeMode === 'manual'}
+                    class:text-white={gymTimeMode === 'manual'}
+                    class:border-primary-600={gymTimeMode === 'manual'}
+                    class:bg-white={gymTimeMode !== 'manual'}
+                    class:border-slate-200={gymTimeMode !== 'manual'}
+                    on:click={() => gymTimeMode = 'manual'}>
+              ✋ Manual
+              <span class="block text-[10px] font-normal opacity-80">yo elijo la hora</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <label class="label">¿Qué franja prefieres?</label>
           <div class="grid grid-cols-3 gap-2">
             <button class="py-2.5 rounded-lg text-sm font-semibold border transition"
                     class:bg-primary-600={gymTimePreference === 'morning'}
@@ -660,15 +689,22 @@
               🌙 Noche
             </button>
           </div>
+          {#if gymTimeMode === 'auto'}
+            <p class="text-[10px] text-slate-400 mt-2">
+              🤖 La app busca el mejor hueco libre de cada día cerca de esta franja, esquivando tus bloques de la <button class="underline" on:click={() => activeTab = 'agenda'}>Agenda</button>.
+            </p>
+          {/if}
         </div>
 
-        <div class="mt-4">
-          <label class="label" for="gym-time">Hora exacta de gym (opcional)</label>
-          <input id="gym-time" type="time" bind:value={preferredGymTime} class="input" placeholder="Ej: 11:30" />
-          <p class="text-[10px] text-slate-400 mt-1">
-            Si la dejas vacía, te sugiere una hora automática según tu preferencia (mañana = ~3h después de despertar).
-          </p>
-        </div>
+        {#if gymTimeMode === 'manual'}
+          <div class="mt-4">
+            <label class="label" for="gym-time">Hora exacta de gym (opcional)</label>
+            <input id="gym-time" type="time" bind:value={preferredGymTime} class="input" placeholder="Ej: 11:30" />
+            <p class="text-[10px] text-slate-400 mt-1">
+              Si la dejas vacía, usa una hora fija según tu franja (mañana = ~3h tras despertar).
+            </p>
+          </div>
+        {/if}
       </div>
 
       <div class="card">
