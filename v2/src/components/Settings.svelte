@@ -2,7 +2,7 @@
   import { profile, saveProfile, goals } from '$stores/profile';
   import { exportAllData, importAllData, wipeAllData } from '$db/database';
   import { EQUIPMENT_CATALOG, EQUIPMENT_BY_CATEGORY } from '$lib/equipmentCatalog';
-  import type { GymEquipmentId, ActivityLevel, Goal, DietType, Budget, TrainingPreference, TrainingProgram, ExperienceLevel } from '$lib/types';
+  import type { GymEquipmentId, ActivityLevel, Goal, DietType, Budget, TrainingPreference, TrainingProgram, ExperienceLevel, BusyBlock, BusyKind } from '$lib/types';
   import { SURPLUS_RANGE } from '$lib/nutrition/macros';
   import { navigate } from '$stores/navigation';
   import { onMount } from 'svelte';
@@ -58,7 +58,53 @@
     alert('Programa cambiado ✓');
   }
 
-  let activeTab: 'profile' | 'preferences' | 'equipment' | 'data' | 'sync' | 'about' = 'profile';
+  let activeTab: 'profile' | 'preferences' | 'agenda' | 'equipment' | 'data' | 'sync' | 'about' = 'profile';
+
+  // ─── AGENDA (bloques de trabajo/clase) ──────────────────────────────────
+  let busyBlocks: BusyBlock[] = ($profile?.busyBlocks ?? []).map(b => ({ ...b }));
+  const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  const BUSY_KINDS: { val: BusyKind; label: string; icon: string }[] = [
+    { val: 'work',  label: 'Trabajo', icon: '💼' },
+    { val: 'class', label: 'Clase',   icon: '📚' },
+    { val: 'other', label: 'Otro',    icon: '📌' }
+  ];
+  // Borrador para añadir un bloque nuevo
+  let newBlock: { days: Set<number>; startTime: string; endTime: string; label: string; kind: BusyKind } = {
+    days: new Set(), startTime: '09:00', endTime: '15:00', label: '', kind: 'work'
+  };
+
+  function toggleBlockDay(d: number) {
+    if (newBlock.days.has(d)) newBlock.days.delete(d); else newBlock.days.add(d);
+    newBlock = newBlock;
+  }
+
+  async function addBusyBlocks() {
+    if (newBlock.days.size === 0) { alert('Elige al menos un día.'); return; }
+    if (newBlock.endTime <= newBlock.startTime) { alert('La hora de fin debe ser posterior a la de inicio.'); return; }
+    const kindLabel = BUSY_KINDS.find(k => k.val === newBlock.kind)?.label ?? '';
+    for (const d of newBlock.days) {
+      busyBlocks = [...busyBlocks, {
+        id: `busy_${Date.now()}_${d}_${Math.random().toString(36).slice(2, 6)}`,
+        dayOfWeek: d,
+        startTime: newBlock.startTime,
+        endTime: newBlock.endTime,
+        label: newBlock.label.trim() || kindLabel,
+        kind: newBlock.kind
+      }];
+    }
+    newBlock = { days: new Set(), startTime: '09:00', endTime: '15:00', label: '', kind: 'work' };
+    await persistBusyBlocks();
+  }
+
+  async function removeBusyBlock(id: string) {
+    busyBlocks = busyBlocks.filter(b => b.id !== id);
+    await persistBusyBlocks();
+  }
+
+  async function persistBusyBlocks() {
+    if (!$profile) return;
+    await saveProfile({ ...$profile, busyBlocks });
+  }
 
   // ─── SYNC (cuenta email + contraseña) ──────────────────────────────────
   let authMode: 'login' | 'register' = 'login';
@@ -264,6 +310,10 @@
             class:bg-primary-600={activeTab === 'preferences'}
             class:text-white={activeTab === 'preferences'}
             on:click={() => activeTab = 'preferences'}>🎯 Preferencias</button>
+    <button class="flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition whitespace-nowrap"
+            class:bg-primary-600={activeTab === 'agenda'}
+            class:text-white={activeTab === 'agenda'}
+            on:click={() => activeTab = 'agenda'}>🗓️ Agenda</button>
     <button class="flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition whitespace-nowrap"
             class:bg-primary-600={activeTab === 'equipment'}
             class:text-white={activeTab === 'equipment'}
@@ -656,6 +706,93 @@
       </div>
 
       <button class="btn-primary w-full" on:click={savePerfil}>Guardar preferencias</button>
+    </div>
+  {/if}
+
+  {#if activeTab === 'agenda'}
+    <div class="space-y-3">
+      <div class="card-feature">
+        <h3 class="font-bold text-lg mb-1">🗓️ Tu agenda fija</h3>
+        <p class="text-sm text-slate-600">
+          Añade tus bloques recurrentes de <b>trabajo o clase</b>. La app los mostrará
+          en tu horario y colocará el entreno y las comidas en tus huecos libres.
+        </p>
+      </div>
+
+      <!-- Lista de bloques actuales, agrupados por día -->
+      {#each WEEKDAY_LABELS as wd, di}
+        {@const dayBlocks = busyBlocks.filter(b => b.dayOfWeek === di).sort((a, b) => a.startTime.localeCompare(b.startTime))}
+        {#if dayBlocks.length > 0}
+          <div class="card">
+            <h4 class="section-title mb-2">{['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'][di]}</h4>
+            <div class="space-y-2">
+              {#each dayBlocks as b (b.id)}
+                <div class="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                  <span class="text-lg">{BUSY_KINDS.find(k => k.val === b.kind)?.icon ?? '📌'}</span>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-semibold truncate">{b.label}</div>
+                    <div class="text-xs text-slate-500 font-mono">{b.startTime}–{b.endTime}</div>
+                  </div>
+                  <button class="text-red-500 text-sm px-2" on:click={() => removeBusyBlock(b.id)} aria-label="Borrar">✕</button>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      {/each}
+
+      {#if busyBlocks.length === 0}
+        <div class="card text-sm text-slate-500 text-center py-4">
+          Aún no tienes bloques. Añade tu horario de trabajo o clase abajo.
+        </div>
+      {/if}
+
+      <!-- Añadir bloque nuevo -->
+      <div class="card">
+        <h3 class="section-title mb-3">➕ Añadir bloque</h3>
+
+        <label class="label">Tipo</label>
+        <div class="grid grid-cols-3 gap-2 mb-3">
+          {#each BUSY_KINDS as k}
+            <button class="py-2 rounded-lg border text-sm font-semibold transition"
+                    class:bg-primary-600={newBlock.kind === k.val}
+                    class:text-white={newBlock.kind === k.val}
+                    class:border-primary-600={newBlock.kind === k.val}
+                    class:bg-white={newBlock.kind !== k.val}
+                    class:border-slate-200={newBlock.kind !== k.val}
+                    on:click={() => newBlock.kind = k.val}>{k.icon} {k.label}</button>
+          {/each}
+        </div>
+
+        <label class="label">Días</label>
+        <div class="grid grid-cols-7 gap-1 mb-3">
+          {#each WEEKDAY_LABELS as wd, di}
+            <button class="py-2 rounded-lg border text-xs font-semibold transition"
+                    class:bg-primary-600={newBlock.days.has(di)}
+                    class:text-white={newBlock.days.has(di)}
+                    class:border-primary-600={newBlock.days.has(di)}
+                    class:bg-white={!newBlock.days.has(di)}
+                    class:border-slate-200={!newBlock.days.has(di)}
+                    on:click={() => toggleBlockDay(di)}>{wd}</button>
+          {/each}
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="label" for="bb-start">Desde</label>
+            <input id="bb-start" type="time" bind:value={newBlock.startTime} class="input" />
+          </div>
+          <div>
+            <label class="label" for="bb-end">Hasta</label>
+            <input id="bb-end" type="time" bind:value={newBlock.endTime} class="input" />
+          </div>
+        </div>
+
+        <label class="label" for="bb-label">Nombre (opcional)</label>
+        <input id="bb-label" type="text" bind:value={newBlock.label} class="input mb-3" placeholder="Ej: Universidad, Turno mañana…" />
+
+        <button class="btn-primary w-full" on:click={addBusyBlocks}>Añadir a mi agenda</button>
+      </div>
     </div>
   {/if}
 

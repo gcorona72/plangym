@@ -67,6 +67,8 @@ export interface UserProfile {
   userPhase?: UserPhase;
   /** Nivel de experiencia con pesas. Afecta a la velocidad de progresión sugerida. */
   experienceLevel?: ExperienceLevel;
+  /** Bloques fijos recurrentes (trabajo, clase…) para cuadrar el horario. */
+  busyBlocks?: BusyBlock[];
   /** Cardio: días por semana objetivo (0-7). */
   cardioDaysPerWeek?: number;
   /** Cardio: minutos por sesión. */
@@ -75,6 +77,25 @@ export interface UserProfile {
   stepGoal?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── AGENDA: BLOQUES FIJOS (trabajo, clase) ─────────────────────────────────
+export type BusyKind = 'work' | 'class' | 'other';
+
+/**
+ * Bloque recurrente de tiempo ocupado, por día de la semana. La app lo muestra
+ * en el horario y evita colocar el entreno o las comidas encima.
+ */
+export interface BusyBlock {
+  id: string;
+  /** 0 = Lunes … 6 = Domingo (igual que isoDayOfWeek). */
+  dayOfWeek: number;
+  /** "HH:MM" */
+  startTime: string;
+  /** "HH:MM" */
+  endTime: string;
+  label: string;
+  kind: BusyKind;
 }
 
 // ─── EQUIPAMIENTO DE GYM ────────────────────────────────────────────────────

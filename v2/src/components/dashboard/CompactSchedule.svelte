@@ -6,8 +6,10 @@
   export let trainingDay: TrainingDay | null;
   /** Si es true, marca con verde las pasadas (solo tiene sentido para HOY). */
   export let highlightPast: boolean = false;
+  /** Día de la semana (0=L … 6=D) para mostrar los bloques correctos. */
+  export let dayOfWeek: number | undefined = undefined;
 
-  $: schedule = buildDailySchedule(profile, trainingDay);
+  $: schedule = buildDailySchedule(profile, trainingDay, dayOfWeek);
 
   // Mostramos solo las claves: despertar, comidas, entreno, dormir (sin pre/post)
   // para mantenerlo compacto. Pre/post solo si hay entreno y es muy distinto.
@@ -22,6 +24,7 @@
       || e.type === 'pre_workout_snack'
       || e.type === 'post_workout'
       || e.type === 'meal'
+      || e.type === 'busy'
     );
   }
 

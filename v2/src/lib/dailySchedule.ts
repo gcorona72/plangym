@@ -1,6 +1,7 @@
-import type { UserProfile, MealType, TrainingDay } from './types';
+import type { UserProfile, MealType, TrainingDay, BusyBlock } from './types';
+import { isoDayOfWeek } from './dateUtils';
 
-export type ScheduleType = 'wake' | 'cardio' | 'meal' | 'pre_workout_snack' | 'training' | 'post_workout' | 'sleep';
+export type ScheduleType = 'wake' | 'cardio' | 'meal' | 'pre_workout_snack' | 'training' | 'post_workout' | 'sleep' | 'busy';
 
 export interface ScheduleEntry {
   /** "HH:MM" en hora local */
@@ -31,6 +32,49 @@ function toTimeStr(minutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
 
+// ─── BLOQUES OCUPADOS (trabajo/clase) ─────────────────────────────────────────
+interface BlockRange { start: number; end: number; label: string; kind: string; }
+
+const BUSY_ICON: Record<string, string> = { work: '💼', class: '📚', other: '📌' };
+
+/** Bloque que solapa con [start,end), o null. */
+function overlappingBlock(start: number, end: number, blocks: BlockRange[]): BlockRange | null {
+  for (const b of blocks) {
+    if (start < b.end && end > b.start) return b;
+  }
+  return null;
+}
+
+/**
+ * Desplaza un evento con duración `dur` para que no caiga sobre un bloque:
+ * lo coloca justo después del bloque que solapa (con 10 min de margen),
+ * iterando por si hay bloques encadenados. Si no solapa, devuelve igual.
+ */
+function pushAfterBlocks(start: number, dur: number, blocks: BlockRange[]): number {
+  let s = start;
+  for (let i = 0; i < blocks.length + 1; i++) {
+    const b = overlappingBlock(s, s + dur, blocks);
+    if (!b) return s;
+    s = b.end + 10;
+  }
+  return s;
+}
+
+/**
+ * Si un instante cae dentro de un bloque, lo mueve al borde más cercano
+ * (justo antes de empezar o justo después de acabar). Si no, lo deja.
+ */
+function nudgeOutOfBlocks(minutes: number, blocks: BlockRange[]): number {
+  for (const b of blocks) {
+    if (minutes >= b.start && minutes < b.end) {
+      const toBefore = minutes - (b.start - 10);
+      const toAfter = (b.end + 10) - minutes;
+      return toAfter <= toBefore ? b.end + 10 : b.start - 10;
+    }
+  }
+  return minutes;
+}
+
 /**
  * Genera el cronograma ideal del día basado en:
  *  - Hora de despertar (wakeTarget)
@@ -42,14 +86,36 @@ function toTimeStr(minutes: number): string {
  * dejando ~3h entre comidas principales y colocando pre/post entreno alrededor
  * del gym.
  */
-export function buildDailySchedule(profile: UserProfile, trainingDay: TrainingDay | null): ScheduleEntry[] {
+export function buildDailySchedule(
+  profile: UserProfile,
+  trainingDay: TrainingDay | null,
+  dayOfWeek: number = isoDayOfWeek(new Date())
+): ScheduleEntry[] {
   const wake = toMinutes(profile.wakeTarget, 9 * 60);          // por defecto 09:00
   const bed = toMinutes(profile.bedtimeTarget, 23 * 60 + 30);  // por defecto 23:30
   const isRestDay = !trainingDay || trainingDay.isRestDay;
   const gymPref = profile.gymTimePreference ?? 'morning';
   const trainingDayName = trainingDay?.name ?? '';
 
+  // Bloques ocupados de este día de la semana
+  const blocks: BlockRange[] = (profile.busyBlocks ?? [])
+    .filter(b => b.dayOfWeek === dayOfWeek)
+    .map(b => ({ start: toMinutes(b.startTime, 0), end: toMinutes(b.endTime, 0), label: b.label, kind: b.kind }))
+    .filter(b => b.end > b.start);
+
   const entries: ScheduleEntry[] = [];
+
+  // Bloques ocupados como entradas visibles
+  for (const b of blocks) {
+    entries.push({
+      time: toTimeStr(b.start),
+      minutes: b.start,
+      type: 'busy',
+      label: b.label || (b.kind === 'work' ? 'Trabajo' : b.kind === 'class' ? 'Clase' : 'Ocupado'),
+      icon: BUSY_ICON[b.kind] ?? '📌',
+      hint: `${toTimeStr(b.start)}–${toTimeStr(b.end)}`
+    });
+  }
 
   // Hora de despertar
   entries.push({
@@ -73,6 +139,17 @@ export function buildDailySchedule(profile: UserProfile, trainingDay: TrainingDa
         trainingMinutes = 17 * 60;       // 17:00
       } else {
         trainingMinutes = 18 * 60 + 30;  // 18:30
+      }
+    }
+    // Evitar que el entreno (~90 min con calentamiento) caiga sobre trabajo/clase
+    if (blocks.length > 0) {
+      const moved = pushAfterBlocks(trainingMinutes, 90, blocks);
+      // Si moverlo lo deja demasiado tarde (después de la cena), mejor antes del bloque
+      if (moved + 90 > bed - 120) {
+        const firstBlock = blocks.find(b => trainingMinutes! < b.end && trainingMinutes! + 90 > b.start);
+        if (firstBlock) trainingMinutes = Math.max(wake + 60, firstBlock.start - 90 - 15);
+      } else {
+        trainingMinutes = moved;
       }
     }
   }
@@ -114,8 +191,10 @@ export function buildDailySchedule(profile: UserProfile, trainingDay: TrainingDa
   if (trainingMinutes != null) {
     // Pre-entreno ~60 min antes
     const preWorkout = trainingMinutes - 60;
-    // Solo saltar si cae encima del desayuno (menos de 30 min de margen)
-    if (preWorkout - breakfast >= 30) {
+    // Saltar si cae encima del desayuno (<30 min) o dentro de un bloque
+    // ocupado (entrenas justo al salir de clase/trabajo → ya comiste antes).
+    const preInBlock = overlappingBlock(preWorkout, preWorkout + 1, blocks) != null;
+    if (preWorkout - breakfast >= 30 && !preInBlock) {
       entries.push({
         time: toTimeStr(preWorkout),
         minutes: preWorkout,
@@ -224,6 +303,19 @@ export function buildDailySchedule(profile: UserProfile, trainingDay: TrainingDa
     label: 'Dormir',
     icon: '🛌'
   });
+
+  // Apartar las comidas que caigan sobre un bloque de trabajo/clase
+  if (blocks.length > 0) {
+    for (const e of entries) {
+      if (e.type === 'meal') {
+        const nudged = nudgeOutOfBlocks(e.minutes, blocks);
+        if (nudged !== e.minutes) {
+          e.minutes = nudged;
+          e.time = toTimeStr(nudged);
+        }
+      }
+    }
+  }
 
   // Ordenar y devolver
   entries.sort((a, b) => a.minutes - b.minutes);

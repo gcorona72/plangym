@@ -43,6 +43,7 @@
     if (type === 'sleep') return 'bg-slate-200 text-slate-700';
     if (type === 'pre_workout_snack') return 'bg-orange-100 text-orange-800';
     if (type === 'post_workout') return 'bg-emerald-100 text-emerald-800';
+    if (type === 'busy') return 'bg-violet-100 text-violet-800';
     return 'bg-slate-100 text-slate-700';
   }
 </script>
@@ -107,6 +108,7 @@
               else if (entry.type === 'meal' || entry.type === 'pre_workout_snack' || entry.type === 'post_workout') navigate('nutrition');
               else if (entry.type === 'sleep') navigate('sleep');
               else if (entry.type === 'cardio') navigate('cardio');
+              else if (entry.type === 'busy') navigate('settings');
             }}>
             <div class="flex items-center gap-2">
               <span class={isPast ? 'line-through' : ''}>{entry.label}</span>

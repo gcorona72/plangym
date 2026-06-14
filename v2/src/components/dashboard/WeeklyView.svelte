@@ -295,6 +295,7 @@
           <CompactSchedule
             profile={$profile}
             trainingDay={activeProgram?.days[isoDayOfWeek(d)] ?? null}
+            dayOfWeek={isoDayOfWeek(d)}
             highlightPast={today} />
         </div>
       {/if}
