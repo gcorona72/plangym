@@ -49,7 +49,7 @@ export const onRequestPost = async ({ request, env }: PagesContext & { env: Env 
   }));
 
   const systemText = context ? `${SYSTEM_PROMPT}\n\n--- DATOS DEL USUARIO ---\n${context}` : SYSTEM_PROMPT;
-  const model = env.GEMINI_MODEL || 'gemini-2.0-flash';
+  const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
 
   try {
