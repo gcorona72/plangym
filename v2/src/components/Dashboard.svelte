@@ -47,7 +47,7 @@
   </header>
 
   <!-- Selector de vista con indicador deslizante -->
-  <div class="relative flex gap-1 mb-5 bg-white/65 backdrop-blur-md p-1 rounded-xl ring-1 ring-white/60 shadow-sm">
+  <div class="relative flex gap-1 mb-5 bg-white p-1 rounded-xl ring-1 ring-slate-200 shadow-sm">
     <!-- Pill deslizante de fondo -->
     <div
       class="absolute top-1 bottom-1 rounded-lg bg-primary-600 shadow-md shadow-primary-600/30 transition-all duration-300 ease-out"

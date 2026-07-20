@@ -10,30 +10,16 @@
   }
 
   /* ╭──────────────────────────────────────────────────────────────╮
-     │ AURORA MESH BACKGROUND — degradados suaves de color           │
-     │ azul · violeta · rosa · cian (claro) / tonos profundos (dark) │
+     │ FONDO LIMPIO — blanco/gris muy claro, sin degradados de color │
      ╰──────────────────────────────────────────────────────────────╯ */
   body {
     @apply font-sans antialiased text-slate-900 dark:text-slate-100;
     overscroll-behavior-y: contain;
-    background-color: #f8fafc;
-    background-image:
-      radial-gradient(at 12% 8%, rgba(59, 130, 246, 0.18) 0px, transparent 50%),
-      radial-gradient(at 88% 5%, rgba(168, 85, 247, 0.14) 0px, transparent 50%),
-      radial-gradient(at 5% 95%, rgba(236, 72, 153, 0.10) 0px, transparent 50%),
-      radial-gradient(at 92% 92%, rgba(34, 211, 238, 0.14) 0px, transparent 50%),
-      radial-gradient(at 50% 50%, rgba(99, 102, 241, 0.05) 0px, transparent 50%);
-    background-attachment: fixed;
+    background-color: #f7f8fa;
     min-height: 100vh;
   }
   .dark body {
-    background-color: #0b1120;
-    background-image:
-      radial-gradient(at 12% 8%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
-      radial-gradient(at 88% 5%, rgba(168, 85, 247, 0.10) 0px, transparent 50%),
-      radial-gradient(at 5% 95%, rgba(236, 72, 153, 0.06) 0px, transparent 50%),
-      radial-gradient(at 92% 92%, rgba(34, 211, 238, 0.08) 0px, transparent 50%),
-      radial-gradient(at 50% 50%, rgba(99, 102, 241, 0.04) 0px, transparent 50%);
+    background-color: #0f172a;
   }
 
   /* Tipografía con tracking más cuidado en headings */
@@ -77,14 +63,14 @@
            hover:-translate-y-[1px];
   }
   .btn-secondary {
-    @apply btn bg-white/70 backdrop-blur-md text-slate-900
-           hover:bg-white/90
-           border border-white/60
-           shadow-sm hover:shadow-md
-           dark:bg-slate-800/70 dark:text-slate-100 dark:border-slate-700/60 dark:hover:bg-slate-800/90;
+    @apply btn bg-white text-slate-900
+           hover:bg-slate-50
+           border border-slate-200
+           shadow-sm hover:shadow
+           dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 dark:hover:bg-slate-700;
   }
   .btn-ghost {
-    @apply btn text-slate-600 hover:bg-white/60 dark:text-slate-300 dark:hover:bg-slate-800/60;
+    @apply btn text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800;
   }
   .btn-accent {
     @apply btn bg-accent-600 text-white
@@ -94,37 +80,36 @@
            hover:-translate-y-[1px];
   }
 
-  /* ─── CARDS GLASSMORPHISM ─────────────────────────────────────── */
+  /* ─── CARDS (blancas y limpias) ───────────────────────────────── */
   .card {
-    @apply bg-white/65 backdrop-blur-xl rounded-2xl p-5
-           ring-1 ring-white/50
-           shadow-[0_4px_24px_-8px_rgba(15,23,42,0.06)]
+    @apply bg-white rounded-2xl p-5
+           ring-1 ring-slate-200
+           shadow-[0_1px_3px_rgba(15,23,42,0.04)]
            transition-shadow duration-200
-           dark:bg-slate-900/60 dark:ring-slate-700/50;
+           dark:bg-slate-900 dark:ring-slate-700;
   }
   .card-compact {
-    @apply bg-white/65 backdrop-blur-xl rounded-2xl p-3.5
-           ring-1 ring-white/50
-           shadow-[0_2px_16px_-6px_rgba(15,23,42,0.05)]
-           dark:bg-slate-900/60 dark:ring-slate-700/50;
+    @apply bg-white rounded-2xl p-3.5
+           ring-1 ring-slate-200
+           shadow-[0_1px_3px_rgba(15,23,42,0.04)]
+           dark:bg-slate-900 dark:ring-slate-700;
   }
   .card-feature {
     @apply rounded-2xl p-5
-           bg-gradient-to-br from-white/80 via-white/60 to-white/40
-           backdrop-blur-xl
-           ring-1 ring-white/60
-           shadow-[0_8px_32px_-12px_rgba(59,130,246,0.18)]
-           dark:from-slate-800/80 dark:via-slate-900/70 dark:to-slate-900/50 dark:ring-slate-700/60;
+           bg-white
+           ring-1 ring-primary-200
+           shadow-[0_1px_3px_rgba(15,23,42,0.04)]
+           dark:bg-slate-900 dark:ring-primary-900;
   }
 
   /* ─── INPUTS ──────────────────────────────────────────────────── */
   .input {
-    @apply w-full bg-white/80 backdrop-blur-md
+    @apply w-full bg-white
            border border-slate-200 text-slate-900 rounded-xl px-4 py-3
            focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500
            transition-all duration-200
            placeholder:text-slate-400
-           dark:bg-slate-800/80 dark:border-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500;
+           dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500;
   }
   .label {
     @apply block text-sm font-medium text-slate-700 mb-1.5 dark:text-slate-300;
@@ -133,9 +118,9 @@
   /* ─── CHIPS ───────────────────────────────────────────────────── */
   .chip {
     @apply inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium
-           bg-white/70 backdrop-blur-sm text-slate-700
-           border border-white/60
-           dark:bg-slate-800/70 dark:text-slate-200 dark:border-slate-700/60;
+           bg-white text-slate-700
+           border border-slate-200
+           dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700;
   }
   .chip-active {
     @apply chip bg-primary-600 text-white border-primary-600 dark:bg-primary-600 dark:text-white dark:border-primary-600;
@@ -148,10 +133,10 @@
 
   /* ─── GLASS PANEL (sidebars / navs) ──────────────────────────── */
   .glass-panel {
-    @apply bg-white/70 backdrop-blur-2xl
-           border-white/60
-           shadow-[0_4px_24px_-12px_rgba(15,23,42,0.08)]
-           dark:bg-slate-900/70 dark:border-slate-700/60;
+    @apply bg-white
+           border-slate-200
+           shadow-[0_1px_3px_rgba(15,23,42,0.04)]
+           dark:bg-slate-900 dark:border-slate-700;
   }
 }
 
