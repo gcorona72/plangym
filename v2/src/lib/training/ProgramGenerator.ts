@@ -32,48 +32,60 @@ import type {
 type SlotRole = 'compound' | 'accessory';
 interface Slot { muscle: MuscleGroup; role: SlotRole; }
 
+// NOTA sobre el orden: los slots de brazos (bíceps/tríceps) van PRONTO, no al
+// final. Como el nº de ejercicios por día se recorta según el nivel (slice),
+// si los brazos fueran los últimos se caerían en principiante/intermedio y el
+// tren superior se quedaría sin trabajo directo de brazo. Orden = prioridad.
 const TEMPLATES: Record<string, Slot[]> = {
   full_body: [
     { muscle: 'quads', role: 'compound' },
     { muscle: 'chest', role: 'compound' },
     { muscle: 'back', role: 'compound' },
-    { muscle: 'hamstrings', role: 'accessory' },
     { muscle: 'shoulders', role: 'accessory' },
+    { muscle: 'hamstrings', role: 'accessory' },
+    { muscle: 'triceps', role: 'accessory' },
     { muscle: 'biceps', role: 'accessory' },
-    { muscle: 'triceps', role: 'accessory' }
+    { muscle: 'glutes', role: 'accessory' }
   ],
   upper: [
     { muscle: 'chest', role: 'compound' },
     { muscle: 'back', role: 'compound' },
     { muscle: 'shoulders', role: 'compound' },
-    { muscle: 'back', role: 'accessory' },
-    { muscle: 'chest', role: 'accessory' },
+    { muscle: 'triceps', role: 'accessory' },
     { muscle: 'biceps', role: 'accessory' },
-    { muscle: 'triceps', role: 'accessory' }
+    { muscle: 'chest', role: 'accessory' },
+    { muscle: 'back', role: 'accessory' },
+    { muscle: 'shoulders', role: 'accessory' }
   ],
   lower: [
     { muscle: 'quads', role: 'compound' },
     { muscle: 'hamstrings', role: 'compound' },
     { muscle: 'quads', role: 'accessory' },
     { muscle: 'glutes', role: 'accessory' },
+    { muscle: 'hamstrings', role: 'accessory' },
     { muscle: 'calves', role: 'accessory' },
-    { muscle: 'core', role: 'accessory' }
+    { muscle: 'core', role: 'accessory' },
+    { muscle: 'quads', role: 'accessory' }
   ],
   push: [
     { muscle: 'chest', role: 'compound' },
     { muscle: 'shoulders', role: 'compound' },
-    { muscle: 'chest', role: 'accessory' },
     { muscle: 'triceps', role: 'accessory' },
+    { muscle: 'chest', role: 'accessory' },
     { muscle: 'shoulders', role: 'accessory' },
-    { muscle: 'triceps', role: 'accessory' }
+    { muscle: 'triceps', role: 'accessory' },
+    { muscle: 'chest', role: 'accessory' },
+    { muscle: 'shoulders', role: 'accessory' }
   ],
   pull: [
     { muscle: 'back', role: 'compound' },
     { muscle: 'back', role: 'compound' },
+    { muscle: 'biceps', role: 'accessory' },
     { muscle: 'back', role: 'accessory' },
+    { muscle: 'shoulders', role: 'accessory' },
     { muscle: 'biceps', role: 'accessory' },
-    { muscle: 'biceps', role: 'accessory' },
-    { muscle: 'shoulders', role: 'accessory' }
+    { muscle: 'back', role: 'accessory' },
+    { muscle: 'biceps', role: 'accessory' }
   ],
   legs: [
     { muscle: 'quads', role: 'compound' },
@@ -81,7 +93,9 @@ const TEMPLATES: Record<string, Slot[]> = {
     { muscle: 'quads', role: 'accessory' },
     { muscle: 'glutes', role: 'accessory' },
     { muscle: 'hamstrings', role: 'accessory' },
-    { muscle: 'calves', role: 'accessory' }
+    { muscle: 'calves', role: 'accessory' },
+    { muscle: 'core', role: 'accessory' },
+    { muscle: 'quads', role: 'accessory' }
   ]
 };
 
@@ -119,7 +133,9 @@ const SCHEMES: Record<ExperienceLevel, Record<SlotRole, RepScheme>> = {
   }
 };
 
-const SLOTS_BY_LEVEL: Record<ExperienceLevel, number> = { beginner: 5, intermediate: 6, advanced: 7 };
+// Ejercicios por día según nivel. Subidos (antes 5/6/7) para que el tren
+// superior no se quede corto y quepan siempre bíceps + tríceps.
+const SLOTS_BY_LEVEL: Record<ExperienceLevel, number> = { beginner: 6, intermediate: 7, advanced: 8 };
 
 // ─── PRIORIZACIÓN DE EJERCICIOS ─────────────────────────────────────────────
 const TIER_RANK: Record<string, number> = { S: 0, A: 1, B: 2, C: 3, D: 4 };
