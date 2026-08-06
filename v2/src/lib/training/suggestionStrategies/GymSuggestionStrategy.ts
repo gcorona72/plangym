@@ -49,14 +49,18 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
     }
 
     const sets = lastEx.sets;
+    const done = sets.length;
     const RIRs = sets.map(s => s.rir).filter((r): r is number => r != null);
+    const hasRIR = RIRs.length > 0;
+    const minRIR = hasRIR ? Math.min(...RIRs) : null;
 
-    const setsAtTop = sets.filter(s => s.reps >= planned.repsMax).length;
+    const allAtTop = done > 0 && sets.every(s => s.reps >= planned.repsMax);
+    const completedAllSets = done >= planned.sets;
     const setsBelowMin = sets.filter(s => s.reps < planned.repsMin).length;
     const setsAtFailure = RIRs.filter(r => r === 0).length;
-    const allWithMargin = RIRs.length === 0 || RIRs.every(r => r >= 1);
+    const allWithMargin = !hasRIR || RIRs.every(r => r >= 1);
 
-    // Semana de descarga programada: no toques peso ni reps; menos volumen.
+    // 1) Semana de descarga programada: no toques peso ni reps; menos volumen.
     if (ctx?.isDeloadWeek) {
       return {
         status: 'maintain',
@@ -66,52 +70,69 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
       };
     }
 
-    // Fallo en > 50% de las series → CNS fatigue, no subir.
-    if (RIRs.length > 0 && setsAtFailure / sets.length > 0.5) {
-      return {
-        status: 'cns_fatigue',
-        weightKg: workingWeight,
-        reasoning: `⚠️ Llegaste al fallo en ${setsAtFailure}/${sets.length} series. Mantén peso — apunta a RIR 1-2 la próxima vez.`,
-        lastSession: lastSummary
-      };
-    }
-
-    // Doble progresión: todas en el top con margen → +peso (incremento por categoría)
-    if (setsAtTop >= planned.sets && allWithMargin) {
-      const inc = resolveIncrement(exercise, planned, workingWeight);
-      const expHint = experienceHint(ctx?.experienceLevel, ctx?.phase);
-      return {
-        status: 'suggest_up',
-        weightKg: roundToHalf(workingWeight + inc),
-        reasoning: `↑ Top del rango (${planned.repsMax} reps) en todas las series con RIR ≥ 1. Subo ${inc}kg, vuelves al rango bajo (${planned.repsMin}).${expHint}`,
-        lastSession: lastSummary
-      };
-    }
-
-    // Por debajo del mínimo: depende de si es la 1ª o 2ª vez seguida
+    // 2) No llegó ni al mínimo de reps → el peso te pesa demasiado para el rango.
+    //    (Va ANTES que el chequeo de fallo: fallar a 4 reps con objetivo 5-8 no
+    //    es "entrenaste al fallo", es que la carga es excesiva.)
     if (setsBelowMin > 0) {
       const fails = ctx?.consecutiveFailures ?? 1;
       if (fails >= 2) {
         return {
           status: 'suggest_down',
           weightKg: roundToHalf(workingWeight * 0.9),
-          reasoning: `↓ 2ª sesión seguida sin alcanzar el mínimo (${planned.repsMin}). Mini-deload: bajo 10%. Revisa sueño, comida y técnica.`,
+          reasoning: `↓ 2ª sesión sin llegar al mínimo (${planned.repsMin} reps). El peso es demasiado: bajo 10% para consolidar técnica. Revisa sueño y comida.`,
           lastSession: lastSummary
         };
       }
       return {
         status: 'maintain',
         weightKg: workingWeight,
-        reasoning: `≈ Te quedaste corto en ${setsBelowMin}/${sets.length} serie(s). Mismo peso, vuelve a intentarlo antes de bajar.`,
+        reasoning: `≈ Te quedaste en ${lastSummary.maxReps} reps (mínimo ${planned.repsMin}). Repite el peso; si vuelve a pasar, lo bajamos.`,
         lastSession: lastSummary
       };
     }
 
-    // Resto: en rango pero no top → mismo peso, +1 rep por serie
+    // 3) DOBLE PROGRESIÓN: todas las series al tope del rango, con margen (RIR≥1)
+    //    y completaste las series previstas → subir peso.
+    if (allAtTop && completedAllSets && allWithMargin) {
+      const inc = resolveIncrement(exercise, planned, workingWeight);
+      return {
+        status: 'suggest_up',
+        weightKg: roundToHalf(workingWeight + inc),
+        reasoning: `↑ Tope del rango (${planned.repsMax} reps) en todas las series con reserva. Subo ${inc}kg, vuelves al rango bajo (${planned.repsMin}).`,
+        lastSession: lastSummary
+      };
+    }
+
+    // 4) AUTORREGULACIÓN: aunque no llegaras al tope, si TODAS las series te
+    //    dejaron 3+ reps en reserva, el peso te sobra → subir. Esto evita el
+    //    "siempre mantener" cuando la carga es claramente fácil.
+    if (minRIR != null && minRIR >= 3 && completedAllSets) {
+      const inc = resolveIncrement(exercise, planned, workingWeight);
+      return {
+        status: 'suggest_up',
+        weightKg: roundToHalf(workingWeight + inc),
+        reasoning: `↑ Dejaste ${minRIR}+ reps en reserva en todas las series: el peso te sobra. Subo ${inc}kg.`,
+        lastSession: lastSummary
+      };
+    }
+
+    // 5) Fallo (RIR 0) en > 50% de las series estando en rango → no subir,
+    //    entrenar tan al fallo tan a menudo acumula fatiga sin más estímulo.
+    if (hasRIR && setsAtFailure / done > 0.5) {
+      return {
+        status: 'cns_fatigue',
+        weightKg: workingWeight,
+        reasoning: `⚠️ Llegaste al fallo en ${setsAtFailure}/${done} series. Mismo peso — deja 1-2 reps en reserva la próxima para progresar mejor.`,
+        lastSession: lastSummary
+      };
+    }
+
+    // 6) En rango, esfuerzo adecuado, pero sin llegar al tope → mismo peso,
+    //    suma 1 rep por serie hasta cerrar el rango (así luego toca subir).
     return {
       status: 'maintain',
       weightKg: workingWeight,
-      reasoning: `= Mismo peso. Intenta sumar 1 rep por serie (objetivo: llegar a ${planned.repsMax}).`,
+      reasoning: `= Buen esfuerzo. Mismo peso: intenta +1 rep por serie hasta llegar a ${planned.repsMax} en todas, y ahí subimos.`,
       lastSession: lastSummary
     };
   }
@@ -138,21 +159,6 @@ function resolveIncrement(exercise: Exercise, planned: PlannedExercise, currentW
   // el peso ya es serio (>1.2× peso corporal aprox → usamos 80 kg como umbral).
   if (category === 'compound_lower' && currentWeight >= 80) return 2.5;
   return base;
-}
-
-/**
- * Pequeño hint extra para el reasoning según experiencia y fase.
- * Principiante en volumen → puede subir rápido (cada sesión).
- * Cualquiera en recomp/cut → progresión más lenta esperada.
- */
-function experienceHint(level?: string, phase?: string): string {
-  if (phase === 'recomp' || phase === 'cut') {
-    return ' En recomp/cut puede que tardes 2-3 semanas en cumplir esto otra vez, normal.';
-  }
-  if (level === 'beginner') {
-    return ' Principiante: puedes subir casi cada sesión durante meses.';
-  }
-  return '';
 }
 
 // ─── Detector de fallos consecutivos (para mini-deload) ───────────────────
