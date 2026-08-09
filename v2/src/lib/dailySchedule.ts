@@ -75,24 +75,40 @@ function nudgeOutOfBlocks(minutes: number, blocks: BlockRange[]): number {
   return minutes;
 }
 
+/** Margen máximo (min) que aceptamos mover una comida para caer en un hueco. */
+const MEAL_SHIFT_TOLERANCE = 90;
+
 /**
- * Coloca una comida (evento puntual) en el hueco libre más cercano a su hora
- * ideal. Si la hora ideal ya está libre, la deja. Si cae en un bloque, busca
- * la ventana libre cuyo punto más próximo a la hora ideal sea el más cercano
- * y la coloca ahí. Esto hace que, si el usuario marca su pausa de comida como
- * un hueco entre dos bloques de trabajo, el almuerzo caiga en esa pausa.
+ * Coloca una comida respetando la agenda, pero SIN desplazarla horas.
+ *
+ * Clave: un bloque de trabajo/clase impide ENTRENAR, no COMER. La gente come
+ * en la oficina o en su pausa. Por eso:
+ *   - Si la hora ideal está libre → se queda.
+ *   - Si cae dentro de un bloque y hay un hueco cerca (≤90 min, p. ej. la
+ *     pausa de comida entre dos bloques) → se mueve a ese hueco.
+ *   - Si no hay hueco cercano → se queda a su hora (comes en el trabajo).
+ *     Mejor comer a las 14:00 en la oficina que a las 17:00 tras 10h de ayuno.
+ *
+ * Devuelve la hora y si queda dentro de un bloque (para avisar en la UI).
  */
-function placeMealInFreeWindow(nominal: number, blocks: BlockRange[], floor: number, ceiling: number): number {
-  if (overlappingBlock(nominal, nominal + 1, blocks) == null) return nominal;
+function placeMeal(
+  nominal: number, blocks: BlockRange[], floor: number, ceiling: number
+): { minutes: number; duringBlock: BlockRange | null } {
+  const inBlock = overlappingBlock(nominal, nominal + 1, blocks);
+  if (inBlock == null) return { minutes: nominal, duringBlock: null };
+
   const windows = freeWindows(floor, ceiling, blocks).filter(w => w.end - w.start >= 20);
-  if (windows.length === 0) return nominal;
-  let best = nominal, bestDist = Infinity;
+  let best: number | null = null, bestDist = Infinity;
   for (const w of windows) {
     const p = Math.min(Math.max(nominal, w.start + 5), w.end - 5);
     const d = Math.abs(p - nominal);
     if (d < bestDist) { bestDist = d; best = p; }
   }
-  return best;
+  // Solo movemos si el hueco está razonablemente cerca de la hora ideal
+  if (best != null && bestDist <= MEAL_SHIFT_TOLERANCE) {
+    return { minutes: best, duringBlock: null };
+  }
+  return { minutes: nominal, duringBlock: inBlock };
 }
 
 /** Ventanas de tiempo LIBRES entre [from,to) descontando los bloques. */
@@ -234,29 +250,54 @@ export function buildDailySchedule(
   const cardioDays = profile.cardioDaysPerWeek ?? 0;
   // Para esta versión: si hay cardio configurado, se muestra cada día.
   // (Lógica más fina por día → se puede afinar después con un schedule semanal.)
+  let cardioStart: number | null = null;
+  let cardioFasted = true;
   if (cardioMinutes > 0 && cardioDays > 0) {
-    const cardioStart = wake + 5; // 5 min después de despertar (en ayunas)
+    // Preferencia: nada más levantarse, en ayunas (15 min para espabilar).
+    const wanted = wake + 15;
+    const needed = cardioMinutes + 20; // + ducha/vuelta a casa
+    if (overlappingBlock(wanted, wanted + needed, blocks) == null) {
+      cardioStart = wanted;
+    } else {
+      // No cabe antes del trabajo/clase → buscar el mejor hueco libre del día
+      // (típicamente al salir). Deja de ser "en ayunas".
+      const windows = freeWindows(wake + 15, bed - 60, blocks).filter(w => w.end - w.start >= needed);
+      if (windows.length > 0) {
+        // Preferimos el primer hueco que no choque con el entreno
+        const nonGym = windows.find(w => trainingMinutes == null
+          || w.start + needed <= trainingMinutes - 30
+          || w.start >= trainingMinutes + 105);
+        const chosen = nonGym ?? windows[0];
+        cardioStart = chosen.start + 10;
+        cardioFasted = false;
+      }
+    }
+  }
+  if (cardioStart != null) {
     entries.push({
       time: toTimeStr(cardioStart),
       minutes: cardioStart,
       type: 'cardio',
-      label: 'Cardio en ayunas',
+      label: cardioFasted ? 'Cardio en ayunas' : 'Cardio',
       icon: '🚴',
-      hint: `${cardioMinutes} min · zona 2 · solo agua + café`
+      hint: cardioFasted
+        ? `${cardioMinutes} min · zona 2 · solo agua + café`
+        : `${cardioMinutes} min · zona 2 · encaja en tu hueco libre`
     });
   }
 
   // ─── DESAYUNO ───────────────────────────────────────────────────────────
-  // 30 min después de despertar (o tras el cardio si lo hay)
-  const breakfast = cardioMinutes > 0 && cardioDays > 0
-    ? wake + 5 + cardioMinutes + 15  // tras cardio + 15 min ducha
+  // 30 min tras despertar; si hay cardio en ayunas, justo después (+ducha).
+  const afterFastedCardio = cardioStart != null && cardioFasted;
+  const breakfast = afterFastedCardio
+    ? cardioStart! + cardioMinutes + 15  // tras cardio + 15 min ducha
     : wake + 30;
   entries.push({
     time: toTimeStr(breakfast),
     minutes: breakfast,
     type: 'meal',
     mealType: 'breakfast',
-    label: cardioMinutes > 0 && cardioDays > 0 ? 'Desayuno post-cardio' : 'Desayuno',
+    label: afterFastedCardio ? 'Desayuno post-cardio' : 'Desayuno',
     icon: '🌅'
   });
 
@@ -323,8 +364,15 @@ export function buildDailySchedule(
   });
 
   // ─── CENA ───────────────────────────────────────────────────────────────
-  // 2-2.5h antes de dormir
-  const dinner = bed - 150;
+  // 2-2.5h antes de dormir, pero nunca pegada al batido post-entreno:
+  // dejamos al menos 75 min para que dé tiempo a tener hambre otra vez.
+  let dinner = bed - 150;
+  if (trainingMinutes != null) {
+    const postWorkoutTime = trainingMinutes + 90;
+    if (dinner - postWorkoutTime < 75) {
+      dinner = Math.min(postWorkoutTime + 75, bed - 45);
+    }
+  }
 
   // ─── MERIENDA ───────────────────────────────────────────────────────────
   // Si entre almuerzo y cena hay un hueco grande (>4h), metemos una merienda
@@ -377,19 +425,23 @@ export function buildDailySchedule(
     icon: '🛌'
   });
 
-  // Colocar las comidas que caigan sobre un bloque (trabajo/clase) en el hueco
-  // libre más cercano. Si hay una pausa entre dos bloques (p. ej. descanso de
-  // comida 13:00-14:00), el almuerzo cae ahí. El desayuno NO se mueve: va
-  // anclado a despertar. Ninguna comida se coloca antes de despertar.
+  // Ajustar las comidas a la agenda. Un bloque de trabajo/clase NO impide
+  // comer: si hay una pausa cerca (≤90 min) la comida cae ahí; si no, se
+  // queda a su hora y se marca "durante el trabajo". El desayuno va anclado
+  // a despertar y no se mueve.
   if (blocks.length > 0) {
     const floor = wake + 5;
     const ceiling = bed - 20;
     for (const e of entries) {
       if (e.type === 'meal' && e.mealType !== 'breakfast') {
-        const placed = placeMealInFreeWindow(e.minutes, blocks, floor, ceiling);
-        if (placed !== e.minutes) {
-          e.minutes = placed;
-          e.time = toTimeStr(placed);
+        const { minutes, duringBlock } = placeMeal(e.minutes, blocks, floor, ceiling);
+        if (minutes !== e.minutes) {
+          e.minutes = minutes;
+          e.time = toTimeStr(minutes);
+        }
+        if (duringBlock) {
+          const what = duringBlock.kind === 'class' ? 'en clase' : 'en el trabajo';
+          e.hint = e.hint ? `${e.hint} · ${what}` : `Llévatelo preparado — te toca ${what}`;
         }
       }
     }
