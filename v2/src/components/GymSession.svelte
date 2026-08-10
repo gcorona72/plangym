@@ -26,6 +26,10 @@
 
   let saving = false;
   let isDeloadWeek = false;
+  /** Fecha (yyyy-mm-dd) a la que se imputa esta sesión. */
+  let sessionDate = '';
+  /** true si se está registrando un entreno de un día pasado. */
+  let isBackfill = false;
 
   onMount(async () => {
     const params = $routeParams;
@@ -58,11 +62,24 @@
       else day.calisthenicsExercises = planned;
     }
 
-    // Iniciar sesión
+    // Fecha de la sesión: la del día del plan que se está registrando.
+    // Si viene `date` por parámetro (recuperar un entreno de un día pasado),
+    // se usa esa; si no, hoy. Así el entreno del martes recuperado el
+    // miércoles queda registrado EN EL MARTES y ese día deja de estar pendiente.
     const today = new Date().toISOString().split('T')[0];
-    session = {
+    sessionDate = typeof params.date === 'string' && params.date ? params.date : today;
+    isBackfill = sessionDate !== today;
+
+    // Si ya había una sesión guardada para ese día y plan, la retomamos
+    // (permite terminar un entreno que se quedó a medias).
+    const existing = await db.sessions
+      .where('date').equals(sessionDate)
+      .filter(s => s.dayId === day!.id && s.modality === modality)
+      .first();
+
+    session = existing ?? {
       id: `sess_${Date.now()}`,
-      date: today,
+      date: sessionDate,
       startedAt: new Date().toISOString(),
       finishedAt: null,
       programId: program.id,
@@ -74,6 +91,16 @@
         skipped: false
       }))
     };
+    // Si la sesión retomada no tiene entradas para algún ejercicio del plan
+    // (p.ej. el plan cambió), las añadimos vacías.
+    if (existing) {
+      for (const p of planned) {
+        if (!session.exercises.some(e => e.exerciseId === p.exerciseId)) {
+          session.exercises.push({ exerciseId: p.exerciseId, sets: [], skipped: false });
+        }
+      }
+      session.finishedAt = null; // vuelve a estar en curso hasta que se termine
+    }
   });
 
   function getPlanned(exerciseId: string): PlannedExercise | undefined {
@@ -115,10 +142,28 @@
 
   async function finishSession() {
     if (!session) return;
+    const totalSets = session.exercises.reduce((a, e) => a + e.sets.length, 0);
+    if (totalSets === 0) {
+      alert('No has registrado ninguna serie. Registra al menos una para poder terminar (así queda constancia para la próxima sesión).');
+      return;
+    }
     saving = true;
     session.finishedAt = new Date().toISOString();
+    // Aseguramos que la fecha sigue siendo la del día del plan (no la de hoy)
+    session.date = sessionDate || session.date;
     await db.sessions.put(session);
     restTimer.stop();
+    saving = false;
+    navigate('dashboard');
+  }
+
+  /** Guarda el progreso sin marcar la sesión como terminada. */
+  async function saveDraft() {
+    if (!session) return;
+    saving = true;
+    session.finishedAt = null;
+    session.date = sessionDate || session.date;
+    await db.sessions.put(session);
     saving = false;
     navigate('dashboard');
   }
@@ -140,6 +185,20 @@
       <h1 class="text-2xl font-bold">{day.name}</h1>
       <p class="text-slate-500 text-sm">{modality === 'gym' ? '🏋️ Versión gym' : '🤸 Versión calistenia'}</p>
     </header>
+
+    {#if isBackfill}
+      <div class="card mb-3 ring-2 ring-amber-300 bg-amber-50">
+        <div class="flex items-start gap-2">
+          <span class="text-2xl">🗓️</span>
+          <div class="text-sm">
+            <div class="font-bold text-amber-800">Recuperando el entreno del {new Date(sessionDate + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+            <p class="text-amber-700 mt-0.5 text-xs">
+              Los datos se guardarán en ese día, no en hoy. Así tu seguimiento queda correcto.
+            </p>
+          </div>
+        </div>
+      </div>
+    {/if}
 
     {#if isDeloadWeek}
       <div class="card mb-3 ring-2 ring-orange-300 bg-orange-50">
@@ -269,9 +328,15 @@
       {/if}
     {/each}
 
-    <button class="btn-accent w-full mt-6 mb-4" disabled={saving} on:click={finishSession}>
+    <button class="btn-accent w-full mt-6" disabled={saving} on:click={finishSession}>
       {saving ? 'Guardando…' : '✅ Finalizar entreno'}
     </button>
+    <button class="btn-secondary w-full mt-2 mb-4 text-sm" disabled={saving} on:click={saveDraft}>
+      💾 Guardar y seguir luego
+    </button>
+    <p class="text-[10px] text-slate-400 text-center mb-4">
+      "Guardar y seguir luego" conserva las series registradas; el día seguirá <b>pendiente</b> hasta que finalices.
+    </p>
   {:else}
     <p class="text-center text-slate-500 py-12">Cargando…</p>
   {/if}

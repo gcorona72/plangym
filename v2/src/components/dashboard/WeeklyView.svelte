@@ -108,6 +108,21 @@
     return isSameDay(d, new Date());
   }
 
+  /** ¿La fecha es posterior a hoy? (los días futuros no están "pendientes") */
+  function isFuture(d: Date): boolean {
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    const x = new Date(d); x.setHours(0, 0, 0, 0);
+    return x.getTime() > t.getTime();
+  }
+
+  /** Abre la pantalla de registro imputando la sesión a ESE día. */
+  function registerWorkoutFor(d: Date) {
+    if (!activeProgram) return;
+    const plan = activeProgram.days[isoDayOfWeek(d)];
+    if (!plan || plan.isRestDay) return;
+    navigate('gym_session', { dayId: plan.id, modality: 'gym', date: toDateKey(d) });
+  }
+
   function dayPlanName(d: Date): string {
     if (!activeProgram) return '';
     const dow = isoDayOfWeek(d);
@@ -240,6 +255,10 @@
           {/if}
           {#if st?.hasSession}
             <span class="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">✓ Hecho</span>
+          {:else if st?.hasDraft}
+            <span class="text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">⏸ A medias</span>
+          {:else if planExists && !restDay && !isFuture(d)}
+            <span class="text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">⏳ Pendiente</span>
           {/if}
         </div>
       </div>
@@ -299,6 +318,14 @@
             dayOfWeek={isoDayOfWeek(d)}
             highlightPast={today} />
         </div>
+      {/if}
+
+      <!-- Registrar / recuperar el entreno de ESTE día -->
+      {#if planExists && !restDay && !isFuture(d) && !st?.hasSession}
+        <button class="btn-accent w-full py-2 text-xs mt-2"
+                on:click={() => registerWorkoutFor(d)}>
+          {st?.hasDraft ? `⏸ Continuar (${st.setsLogged} series)` : today ? '▶️ Empezar entreno' : '📝 Registrar este entreno'}
+        </button>
       {/if}
 
       <!-- Botones dentro del panel -->

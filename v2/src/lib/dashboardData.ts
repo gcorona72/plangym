@@ -38,6 +38,10 @@ export async function getCardioBetween(startKey: string, endKey: string): Promis
 export interface DayStatus {
   date: string;
   hasSession: boolean;
+  /** Sesión con series registradas pero sin finalizar (se puede retomar). */
+  hasDraft: boolean;
+  /** Nº de series registradas ese día (finalizadas o no). */
+  setsLogged: number;
   sessionModality?: 'gym' | 'calisthenics';
   mealsLogged: number;
   macros: Macros;
@@ -65,9 +69,13 @@ export function buildDayStatus(
   const log = mealLogs.find(x => x.date === dateKey);
   const sl = sleep.find(x => x.date === dateKey);
   const dayCardio = cardio.filter(c => c.date === dateKey);
+  const setsLogged = s ? s.exercises.reduce((a, e) => a + (e.sets?.length ?? 0), 0) : 0;
   return {
     date: dateKey,
     hasSession: !!s && !!s.finishedAt,
+    /** Sesión empezada y con series, pero sin finalizar → se puede retomar. */
+    hasDraft: !!s && !s.finishedAt && setsLogged > 0,
+    setsLogged,
     sessionModality: s?.modality,
     mealsLogged: log?.meals.length ?? 0,
     macros: log ? macrosOfLog(log) : { kcal: 0, proteinG: 0, carbsG: 0, fatsG: 0 },
