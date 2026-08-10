@@ -147,8 +147,9 @@
     const dow = isoDayOfWeek(d);
     const plan = activeProgram.days[dow];
     if (!plan) return;
-    // Permitimos navegar también en días de descanso → DayDetail muestra "Día de descanso"
-    navigate('day_detail', { dayId: plan.id });
+    // Permitimos navegar también en días de descanso → DayDetail muestra "Día de descanso".
+    // Pasamos la fecha para que DayDetail sepa si es pasado (historial) o actual.
+    navigate('day_detail', { dayId: plan.id, date: toDateKey(d) });
   }
 
   function goToTodayPlan() {

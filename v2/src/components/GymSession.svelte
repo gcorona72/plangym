@@ -99,7 +99,11 @@
           session.exercises.push({ exerciseId: p.exerciseId, sets: [], skipped: false });
         }
       }
-      session.finishedAt = null; // vuelve a estar en curso hasta que se termine
+      // Una sesión pasada YA finalizada no se reabre (el historial no se toca).
+      // Solo se marca "en curso" si es de hoy o si estaba a medias.
+      if (!isBackfill || !existing.finishedAt) {
+        session.finishedAt = null;
+      }
     }
   });
 

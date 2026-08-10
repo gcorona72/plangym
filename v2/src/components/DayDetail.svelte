@@ -3,7 +3,7 @@
   import { db } from '$db/database';
   import { routeParams, navigate } from '$stores/navigation';
   import { openExercise } from '$stores/exerciseModal';
-  import type { TrainingProgram, TrainingDay, Exercise, ExerciseModality } from '$lib/types';
+  import type { TrainingProgram, TrainingDay, Exercise, ExerciseModality, WorkoutSession } from '$lib/types';
   import { profile } from '$stores/profile';
   import { canPerformExercise } from '$lib/training/exerciseFilter';
   import { summarizeDay } from '$lib/training/daySummary';
@@ -46,6 +46,32 @@
   let exercisesById = new Map<string, Exercise>();
   let modality: ExerciseModality = 'gym';
 
+  // ─── Contexto de fecha ────────────────────────────────────────────────
+  // DayDetail puede abrirse para HOY o para un día pasado (desde la vista
+  // semanal). Si el día ya pasó y la sesión está finalizada, la pantalla es
+  // SOLO HISTORIAL: no se puede volver a "empezar" ese entreno.
+  const todayKey = new Date().toISOString().split('T')[0];
+  let dateKey = todayKey;
+  let isPast = false;
+  let session: WorkoutSession | null = null;
+
+  $: isFinished = !!session?.finishedAt;
+  $: isDraft = !!session && !session.finishedAt && session.exercises.some(e => e.sets.length > 0);
+  /** Solo lectura: día pasado con la sesión ya cerrada. */
+  $: readOnly = isPast && isFinished;
+  $: loggedExercises = session
+    ? session.exercises.filter(e => e.sets.length > 0)
+    : [];
+  $: totalSetsLogged = loggedExercises.reduce((a, e) => a + e.sets.length, 0);
+  $: totalVolume = loggedExercises.reduce(
+    (a, e) => a + e.sets.reduce((b, s) => b + (s.weightKg ?? 0) * s.reps, 0), 0);
+
+  function fmtDayLong(key: string): string {
+    return new Date(key + 'T12:00:00').toLocaleDateString('es-ES', {
+      weekday: 'long', day: 'numeric', month: 'long'
+    });
+  }
+
   onMount(async () => {
     program = (await db.programs.filter(p => p.active).first()) ?? null;
     const params = $routeParams;
@@ -54,7 +80,21 @@
     }
     const all = await db.exercises.toArray();
     exercisesById = new Map(all.map(e => [e.id, e]));
+
+    dateKey = typeof params.date === 'string' && params.date ? params.date : todayKey;
+    isPast = dateKey < todayKey;
+    if (day) {
+      session = (await db.sessions
+        .where('date').equals(dateKey)
+        .filter(s => s.dayId === day!.id)
+        .first()) ?? null;
+      if (session) modality = session.modality;
+    }
   });
+
+  function openSession() {
+    navigate('gym_session', { dayId: day?.id, modality, date: dateKey });
+  }
 
   $: exercises = day
     ? (modality === 'gym' ? day.gymExercises : day.calisthenicsExercises)
@@ -73,9 +113,58 @@
   {#if day}
     {@const summary = summarizeDay(day)}
     <h1 class="text-2xl md:text-3xl font-bold mb-1">{day.name}</h1>
-    <p class="text-slate-500 text-sm mb-4">Tu plan de entrenamiento</p>
+    <p class="text-slate-500 text-sm mb-1 capitalize">
+      {isPast ? fmtDayLong(dateKey) : 'Hoy · tu plan de entrenamiento'}
+    </p>
+    {#if isPast}
+      <div class="mb-4">
+        {#if isFinished}
+          <span class="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">✓ Entreno completado</span>
+        {:else if isDraft}
+          <span class="text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">⏸ A medias</span>
+        {:else}
+          <span class="text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">⏳ Sin registrar</span>
+        {/if}
+      </div>
+    {:else}
+      <div class="mb-4"></div>
+    {/if}
 
-    <!-- 🚴 Lanzador de cardio — siempre arriba (gym o descanso) -->
+    <!-- 📋 HISTORIAL: día pasado ya completado → solo lectura -->
+    {#if readOnly}
+      <div class="card mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="section-title">📋 Lo que hiciste</h3>
+          <span class="text-[10px] text-slate-500">
+            {totalSetsLogged} series · {Math.round(totalVolume)} kg de volumen
+          </span>
+        </div>
+        <div class="space-y-3">
+          {#each loggedExercises as e (e.exerciseId)}
+            {@const ex = exercisesById.get(e.exerciseId)}
+            <div>
+              <div class="text-sm font-semibold mb-1">{ex?.name ?? e.exerciseId}</div>
+              <div class="flex flex-wrap gap-1">
+                {#each e.sets as set, i}
+                  <span class="inline-flex items-center gap-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-1.5 py-0.5 text-xs font-mono">
+                    <span class="text-slate-400">{i + 1}</span>
+                    {#if set.weightKg != null}<span class="font-bold">{set.weightKg}kg</span>{/if}
+                    <span class="text-slate-600 dark:text-slate-300">×{set.reps}</span>
+                    {#if set.rir != null}<span class="text-slate-400">·R{set.rir}</span>{/if}
+                  </span>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+        <p class="text-[10px] text-slate-400 mt-3">
+          🔒 Sesión cerrada. El historial de días pasados no se modifica — así tu progresión es fiable.
+        </p>
+      </div>
+    {/if}
+
+    <!-- 🚴 Lanzador de cardio — solo para hoy (no se empieza cardio de un día pasado) -->
+    {#if !isPast}
     <div class="card-feature mb-4">
       <div class="flex items-center justify-between mb-2">
         <h3 class="section-title">🚴 Cardio</h3>
@@ -122,6 +211,7 @@
         ▶ Iniciar {CARDIO_TYPES.find(t => t.id === cardioType)?.label.toLowerCase()}
       </button>
     </div>
+    {/if}
 
     {#if day.isRestDay}
       <div class="card text-center py-8">
@@ -212,9 +302,30 @@
         </div>
       </div>
 
-      <button class="btn-accent w-full" on:click={() => navigate('gym_session', { dayId: day?.id, modality })}>
-        ▶️ Empezar sesión ahora
-      </button>
+      <!-- Acción según el estado del día -->
+      {#if readOnly}
+        <!-- Día pasado ya completado → solo historial, sin empezar de nuevo -->
+        <button class="btn-secondary w-full" on:click={() => navigate('dashboard')}>
+          ← Volver al resumen
+        </button>
+      {:else if isPast && isDraft}
+        <button class="btn-accent w-full" on:click={openSession}>
+          ⏸ Continuar el entreno del {fmtDayLong(dateKey).split(',')[0]}
+        </button>
+      {:else if isPast}
+        <button class="btn-accent w-full" on:click={openSession}>
+          📝 Registrar este entreno
+        </button>
+      {:else if isFinished}
+        <!-- HOY ya finalizado: se permite corregir (pudo darse a finalizar sin querer) -->
+        <button class="btn-secondary w-full" on:click={openSession}>
+          ✏️ Editar la sesión de hoy
+        </button>
+      {:else}
+        <button class="btn-accent w-full" on:click={openSession}>
+          {isDraft ? '⏸ Continuar entreno' : '▶️ Empezar sesión ahora'}
+        </button>
+      {/if}
     {/if}
   {:else}
     <p class="text-slate-500 text-center py-8">Cargando…</p>
