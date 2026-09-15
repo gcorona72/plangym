@@ -255,11 +255,9 @@
          use:onMounted={() => i === days.length - 1 && requestAnimationFrame(tryInitialScroll)}
          class="card relative shrink-0 w-[320px] md:w-[360px] snap-start flex flex-col animate-stagger"
          style="animation-delay: {i * 60}ms"
-         class:ring-2={today || statuses[i]?.isMissed}
+         class:ring-2={today}
          class:ring-primary-500={today}
-         class:bg-primary-50={today && !statuses[i]?.isMissed}
-         class:ring-red-200={statuses[i]?.isMissed}
-         class:bg-red-50={statuses[i]?.isMissed}
+         class:bg-primary-50={today}
          class:opacity-60={!today && !statuses[i]?.isMissed && d < new Date(new Date().toDateString())}>
       <!-- Header del panel: fecha + estado -->
       <div class="flex items-center justify-between mb-3">
