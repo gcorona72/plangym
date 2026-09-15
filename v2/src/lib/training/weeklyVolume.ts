@@ -82,6 +82,7 @@ export function computeVolume(
 ): Record<string, number> {
   const acc: Record<string, number> = {};
   for (const s of sessions) {
+    if (s.missed) continue; // un día marcado como ausencia no suma volumen
     for (const se of s.exercises) {
       const doneSets = se.sets?.length ?? 0;
       if (doneSets === 0 || se.skipped) continue;
@@ -110,7 +111,8 @@ export async function getWeeklyVolume(reference: Date = new Date()): Promise<Wee
     db.exercises.toArray()
   ]);
   const byId = new Map(allEx.map(e => [e.id, e]));
-  const acc = computeVolume(sessions, byId);
+  const trained = sessions.filter(s => !s.missed);
+  const acc = computeVolume(trained, byId);
 
   const muscles: MuscleVolume[] = TRACKED_MUSCLES.map(m => {
     const sets = Math.round((acc[m] ?? 0) * 10) / 10;
@@ -129,5 +131,5 @@ export async function getWeeklyVolume(reference: Date = new Date()): Promise<Wee
     .filter(v => v.status === 'none' || v.status === 'low')
     .sort((a, b) => a.pct - b.pct);
 
-  return { from, to, sessions: sessions.length, muscles, lagging };
+  return { from, to, sessions: trained.length, muscles, lagging };
 }

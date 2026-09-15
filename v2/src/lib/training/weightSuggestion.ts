@@ -4,6 +4,8 @@ import { getSuggestionStrategy } from './suggestionStrategies/SuggestionRegistry
 import type { SuggestionContext } from './suggestionStrategies/SuggestionStrategy';
 import { detectConsecutiveFailures } from './suggestionStrategies/GymSuggestionStrategy';
 import { computeCycleStatus } from './cycle';
+import { daysBetween } from './detraining';
+import { dominantMissedReason } from './sessionStatus';
 
 /**
  * Sobrecarga progresiva para ectomorfos.
@@ -86,7 +88,7 @@ export async function suggestWeight(
   const sessions = await db.sessions
     .orderBy('date')
     .reverse()
-    .filter(s => s.exercises.some(e => e.exerciseId === exerciseId && !e.skipped && e.sets.length > 0))
+    .filter(s => !s.missed && s.exercises.some(e => e.exerciseId === exerciseId && !e.skipped && e.sets.length > 0))
     .limit(1)
     .toArray();
 
@@ -102,11 +104,22 @@ export async function suggestWeight(
     db.profile.get(1)
   ]);
   const cycle = computeCycleStatus(profile?.cycleStartDate);
+
+  // Parón: días desde la última vez que se hizo ESTE ejercicio, y motivo
+  // dominante de las ausencias marcadas en ese hueco (enfermedad, viaje...).
+  const todayKey = new Date().toISOString().split('T')[0];
+  const daysSinceLast = daysBetween(lastSession.date, todayKey);
+  const missedReason = daysSinceLast >= 10
+    ? await dominantMissedReason(lastSession.date, todayKey)
+    : null;
+
   const ctx: SuggestionContext = {
     consecutiveFailures: failures.count,
     isDeloadWeek: cycle.isDeloadWeek,
     experienceLevel: profile?.experienceLevel,
-    phase: profile?.userPhase
+    phase: profile?.userPhase,
+    daysSinceLast,
+    missedReason
   };
 
   const strategy = getSuggestionStrategy(ex.modality);

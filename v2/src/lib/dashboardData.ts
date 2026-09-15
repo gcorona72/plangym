@@ -1,5 +1,5 @@
 import { db } from '$db/database';
-import type { WorkoutSession, DailyMealLog, SleepEntry, Macros, CardioSession } from './types';
+import type { WorkoutSession, DailyMealLog, SleepEntry, Macros, CardioSession, MissedReason } from './types';
 import { toDateKey } from './dateUtils';
 
 /** Suma macros de un array. */
@@ -42,6 +42,10 @@ export interface DayStatus {
   hasDraft: boolean;
   /** Nº de series registradas ese día (finalizadas o no). */
   setsLogged: number;
+  /** Día marcado explícitamente como no asistido. */
+  isMissed: boolean;
+  /** Motivo de la ausencia, si se indicó. */
+  missedReason?: MissedReason;
   sessionModality?: 'gym' | 'calisthenics';
   mealsLogged: number;
   macros: Macros;
@@ -72,10 +76,12 @@ export function buildDayStatus(
   const setsLogged = s ? s.exercises.reduce((a, e) => a + (e.sets?.length ?? 0), 0) : 0;
   return {
     date: dateKey,
-    hasSession: !!s && !!s.finishedAt,
+    hasSession: !!s && !!s.finishedAt && !s.missed,
     /** Sesión empezada y con series, pero sin finalizar → se puede retomar. */
-    hasDraft: !!s && !s.finishedAt && setsLogged > 0,
+    hasDraft: !!s && !s.finishedAt && !s.missed && setsLogged > 0,
     setsLogged,
+    isMissed: !!s?.missed,
+    missedReason: s?.missedReason,
     sessionModality: s?.modality,
     mealsLogged: log?.meals.length ?? 0,
     macros: log ? macrosOfLog(log) : { kcal: 0, proteinG: 0, carbsG: 0, fatsG: 0 },

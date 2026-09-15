@@ -30,6 +30,8 @@
   let sessionDate = '';
   /** true si se está registrando un entreno de un día pasado. */
   let isBackfill = false;
+  /** true si ese día estaba marcado como no asistido y se está recuperando. */
+  let wasMissed = false;
 
   onMount(async () => {
     const params = $routeParams;
@@ -70,12 +72,16 @@
     sessionDate = typeof params.date === 'string' && params.date ? params.date : today;
     isBackfill = sessionDate !== today;
 
-    // Si ya había una sesión guardada para ese día y plan, la retomamos
-    // (permite terminar un entreno que se quedó a medias).
-    const existing = await db.sessions
-      .where('date').equals(sessionDate)
-      .filter(s => s.dayId === day!.id && s.modality === modality)
-      .first();
+    // Si ya había una sesión guardada ese día, la retomamos (permite terminar
+    // un entreno a medias o recuperar un día marcado como ausencia).
+    // Un día tiene como mucho UNA sesión: preferimos la del mismo plan, pero
+    // si lo que hay es un marcador de ausencia (sin series) lo reutilizamos
+    // aunque el plan del día haya cambiado — así nunca quedan dos registros
+    // para la misma fecha.
+    const sameDate = await db.sessions.where('date').equals(sessionDate).toArray();
+    const existing =
+      sameDate.find(s => s.dayId === day!.id && s.modality === modality) ??
+      sameDate.find(s => s.missed && s.exercises.every(e => e.sets.length === 0));
 
     session = existing ?? {
       id: `sess_${Date.now()}`,
@@ -103,6 +109,17 @@
       // Solo se marca "en curso" si es de hoy o si estaba a medias.
       if (!isBackfill || !existing.finishedAt) {
         session.finishedAt = null;
+      }
+      // Si el día estaba marcado como ausencia y ahora se registra el entreno,
+      // deja de serlo (recuperar la sesión gana sobre la marca).
+      wasMissed = !!existing.missed;
+      session.missed = false;
+      session.missedReason = undefined;
+      if (wasMissed) {
+        // El marcador se convierte en la sesión real de este plan
+        session.dayId = day.id;
+        session.modality = modality;
+        session.startedAt = new Date().toISOString();
       }
     }
   });
@@ -189,6 +206,20 @@
       <h1 class="text-2xl font-bold">{day.name}</h1>
       <p class="text-slate-500 text-sm">{modality === 'gym' ? '🏋️ Versión gym' : '🤸 Versión calistenia'}</p>
     </header>
+
+    {#if wasMissed}
+      <div class="card mb-3 ring-2 ring-slate-300 bg-slate-50">
+        <div class="flex items-start gap-2">
+          <span class="text-2xl">↩️</span>
+          <div class="text-sm">
+            <div class="font-bold text-slate-700">Recuperando un día marcado como no asistido</div>
+            <p class="text-slate-600 mt-0.5 text-xs">
+              Al finalizar, la ausencia se retira y este día contará como entrenado.
+            </p>
+          </div>
+        </div>
+      </div>
+    {/if}
 
     {#if isBackfill}
       <div class="card mb-3 ring-2 ring-amber-300 bg-amber-50">

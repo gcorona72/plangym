@@ -9,6 +9,8 @@
   import { summarizeDay } from '$lib/training/daySummary';
   import ExpandedExerciseCard from './ExpandedExerciseCard.svelte';
   import { cardioTracker, formatDistance, formatDuration } from '$lib/cardio/cardioTracker';
+  import { markMissed, unmarkMissed, getSessionFor, MISSED_REASONS, MISSED_REASON_LABEL } from '$lib/training/sessionStatus';
+  import type { MissedReason } from '$lib/types';
   import { getLastCardioSessionOfType } from '$lib/cardio/cardioRepository';
   import type { CardioType, CardioSession } from '$lib/types';
 
@@ -54,9 +56,12 @@
   let dateKey = todayKey;
   let isPast = false;
   let session: WorkoutSession | null = null;
+  /** true mientras se elige el motivo de la ausencia. */
+  let pickingMissed = false;
 
-  $: isFinished = !!session?.finishedAt;
-  $: isDraft = !!session && !session.finishedAt && session.exercises.some(e => e.sets.length > 0);
+  $: isMissed = !!session?.missed;
+  $: isFinished = !!session?.finishedAt && !session?.missed;
+  $: isDraft = !!session && !session.finishedAt && !session.missed && session.exercises.some(e => e.sets.length > 0);
   /** Solo lectura: día pasado con la sesión ya cerrada. */
   $: readOnly = isPast && isFinished;
   $: loggedExercises = session
@@ -96,6 +101,21 @@
     navigate('gym_session', { dayId: day?.id, modality, date: dateKey });
   }
 
+  /** Marca el día como no asistido (no cuenta como entreno). */
+  async function setMissed(reason: MissedReason) {
+    if (!day || !program) return;
+    await markMissed(dateKey, day.id, modality, reason, program.id);
+    session = await getSessionFor(dateKey, day.id);
+    pickingMissed = false;
+  }
+
+  /** Retira la marca de ausencia → el día vuelve a ser recuperable. */
+  async function clearMissed() {
+    if (!day) return;
+    await unmarkMissed(dateKey, day.id);
+    session = await getSessionFor(dateKey, day.id);
+  }
+
   $: exercises = day
     ? (modality === 'gym' ? day.gymExercises : day.calisthenicsExercises)
     : [];
@@ -120,6 +140,10 @@
       <div class="mb-4">
         {#if isFinished}
           <span class="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">✓ Entreno completado</span>
+        {:else if isMissed}
+          <span class="text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">
+            🚫 No asistí{session?.missedReason ? ` · ${MISSED_REASON_LABEL[session.missedReason]}` : ''}
+          </span>
         {:else if isDraft}
           <span class="text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">⏸ A medias</span>
         {:else}
@@ -308,6 +332,32 @@
         <button class="btn-secondary w-full" on:click={() => navigate('dashboard')}>
           ← Volver al resumen
         </button>
+      {:else if isMissed}
+        <!-- Ausencia marcada: sigue pudiendo recuperarse -->
+        <div class="card bg-slate-50 dark:bg-slate-800">
+          <p class="text-xs text-slate-500 mb-3">
+            Este día está marcado como no asistido, así que no cuenta como entreno.
+            La app lo tendrá en cuenta al sugerirte los pesos de la próxima sesión.
+          </p>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="btn-accent py-2 text-xs" on:click={openSession}>📝 Recuperarlo igual</button>
+            <button class="btn-secondary py-2 text-xs" on:click={clearMissed}>↩️ Deshacer ausencia</button>
+          </div>
+        </div>
+      {:else if pickingMissed}
+        <div class="card">
+          <p class="text-sm font-semibold mb-3">¿Por qué no fuiste?</p>
+          <div class="grid grid-cols-3 gap-2">
+            {#each MISSED_REASONS as r}
+              <button class="py-2.5 rounded-lg border border-slate-200 dark:border-slate-600 text-xs font-semibold active:scale-95"
+                      on:click={() => setMissed(r.id)}>
+                <div class="text-xl leading-none">{r.icon}</div>
+                <div class="mt-1">{r.label}</div>
+              </button>
+            {/each}
+          </div>
+          <button class="text-xs text-slate-400 mt-3" on:click={() => pickingMissed = false}>Cancelar</button>
+        </div>
       {:else if isPast && isDraft}
         <button class="btn-accent w-full" on:click={openSession}>
           ⏸ Continuar el entreno del {fmtDayLong(dateKey).split(',')[0]}
@@ -315,6 +365,9 @@
       {:else if isPast}
         <button class="btn-accent w-full" on:click={openSession}>
           📝 Registrar este entreno
+        </button>
+        <button class="w-full py-2 text-xs text-slate-400 mt-2" on:click={() => pickingMissed = true}>
+          🚫 No fui este día
         </button>
       {:else if isFinished}
         <!-- HOY ya finalizado: se permite corregir (pudo darse a finalizar sin querer) -->
@@ -325,6 +378,11 @@
         <button class="btn-accent w-full" on:click={openSession}>
           {isDraft ? '⏸ Continuar entreno' : '▶️ Empezar sesión ahora'}
         </button>
+        {#if !isDraft}
+          <button class="w-full py-2 text-xs text-slate-400 mt-2" on:click={() => pickingMissed = true}>
+            🚫 Hoy no voy a ir
+          </button>
+        {/if}
       {/if}
     {/if}
   {:else}

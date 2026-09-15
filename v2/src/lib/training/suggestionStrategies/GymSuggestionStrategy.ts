@@ -4,6 +4,7 @@ import type { WeightSuggestion } from '$lib/training/weightSuggestion';
 import type { SuggestionStrategy, SuggestionContext } from './SuggestionStrategy';
 import { buildLastSummary } from './SuggestionStrategy';
 import { classifyExercise, getCategoryIncrement, categoryLabel } from '$lib/training/exerciseCategory';
+import { computeDetraining } from '$lib/training/detraining';
 
 /**
  * Estrategia de DOBLE PROGRESIÓN para ejercicios de gimnasio.
@@ -20,6 +21,9 @@ import { classifyExercise, getCategoryIncrement, categoryLabel } from '$lib/trai
  *      → mantener (no es óptimo entrenar al fallo continuo).
  *   6. En semana de deload (6 ó 12 del ciclo)
  *      → mismo peso, mensaje "es semana de descarga, reduce volumen".
+ *   7. Tras un PARÓN largo (enfermedad, viaje, ausencias marcadas)
+ *      → reducir carga según los días parado: volver con el peso de antes
+ *        es fallar series o lesionarse. Manda sobre el resto de reglas.
  *
  * El incremento se resuelve así (de mayor a menor prioridad):
  *   1º `planned.incrementKg`     (override en el programa)
@@ -60,7 +64,19 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
     const setsAtFailure = RIRs.filter(r => r === 0).length;
     const allWithMargin = !hasRIR || RIRs.every(r => r >= 1);
 
-    // 1) Semana de descarga programada: no toques peso ni reps; menos volumen.
+    // 1) VUELTA DE UN PARÓN: manda sobre todo lo demás. Da igual que la última
+    //    sesión fuera buena — si han pasado semanas, esa referencia ya no vale.
+    const detrain = computeDetraining(ctx?.daysSinceLast ?? 0, ctx?.missedReason);
+    if (detrain.reductionPct > 0) {
+      return {
+        status: 'suggest_down',
+        weightKg: roundToHalf(workingWeight * detrain.factor),
+        reasoning: detrain.message,
+        lastSession: lastSummary
+      };
+    }
+
+    // 2) Semana de descarga programada: no toques peso ni reps; menos volumen.
     if (ctx?.isDeloadWeek) {
       return {
         status: 'maintain',
@@ -70,7 +86,7 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
       };
     }
 
-    // 2) No llegó ni al mínimo de reps → el peso te pesa demasiado para el rango.
+    // 3) No llegó ni al mínimo de reps → el peso te pesa demasiado para el rango.
     //    (Va ANTES que el chequeo de fallo: fallar a 4 reps con objetivo 5-8 no
     //    es "entrenaste al fallo", es que la carga es excesiva.)
     if (setsBelowMin > 0) {
@@ -91,7 +107,7 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
       };
     }
 
-    // 3) DOBLE PROGRESIÓN: todas las series al tope del rango, con margen (RIR≥1)
+    // 4) DOBLE PROGRESIÓN: todas las series al tope del rango, con margen (RIR≥1)
     //    y completaste las series previstas → subir peso.
     if (allAtTop && completedAllSets && allWithMargin) {
       const inc = resolveIncrement(exercise, planned, workingWeight);
@@ -103,7 +119,7 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
       };
     }
 
-    // 4) AUTORREGULACIÓN: aunque no llegaras al tope, si TODAS las series te
+    // 5) AUTORREGULACIÓN: aunque no llegaras al tope, si TODAS las series te
     //    dejaron 3+ reps en reserva, el peso te sobra → subir. Esto evita el
     //    "siempre mantener" cuando la carga es claramente fácil.
     if (minRIR != null && minRIR >= 3 && completedAllSets) {
@@ -116,7 +132,7 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
       };
     }
 
-    // 5) Fallo (RIR 0) en > 50% de las series estando en rango → no subir,
+    // 6) Fallo (RIR 0) en > 50% de las series estando en rango → no subir,
     //    entrenar tan al fallo tan a menudo acumula fatiga sin más estímulo.
     if (hasRIR && setsAtFailure / done > 0.5) {
       return {
@@ -127,7 +143,7 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
       };
     }
 
-    // 6) En rango, esfuerzo adecuado, pero sin llegar al tope → mismo peso,
+    // 7) En rango, esfuerzo adecuado, pero sin llegar al tope → mismo peso,
     //    suma 1 rep por serie hasta cerrar el rango (así luego toca subir).
     return {
       status: 'maintain',

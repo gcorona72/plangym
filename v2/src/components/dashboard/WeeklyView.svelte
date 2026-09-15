@@ -15,6 +15,32 @@
   import WeeklyVolumeCard from './WeeklyVolumeCard.svelte';
   import CompactSchedule from './CompactSchedule.svelte';
   import { profile } from '$stores/profile';
+  import { markMissed, unmarkMissed, MISSED_REASONS, MISSED_REASON_ICON, MISSED_REASON_LABEL } from '$lib/training/sessionStatus';
+  import type { MissedReason } from '$lib/types';
+
+  /** Día para el que se está eligiendo motivo de ausencia (null = cerrado). */
+  let missedPickerDay: Date | null = null;
+
+  function openMissedPicker(d: Date) { missedPickerDay = d; }
+
+  async function confirmMissed(reason: MissedReason) {
+    const d = missedPickerDay;
+    if (!d || !activeProgram) return;
+    const plan = activeProgram.days[isoDayOfWeek(d)];
+    if (!plan || plan.isRestDay) return;
+    await markMissed(toDateKey(d), plan.id, 'gym', reason, activeProgram.id);
+    missedPickerDay = null;
+    await loadWeek(weekStart, weekEnd);
+  }
+
+  /** Quita la marca de ausencia → el día vuelve a estar recuperable. */
+  async function undoMissed(d: Date) {
+    if (!activeProgram) return;
+    const plan = activeProgram.days[isoDayOfWeek(d)];
+    if (!plan) return;
+    await unmarkMissed(toDateKey(d), plan.id);
+    await loadWeek(weekStart, weekEnd);
+  }
 
   let stagnations: StrengthStagnation[] = [];
   let panelsContainer: HTMLDivElement;
@@ -256,6 +282,10 @@
           {/if}
           {#if st?.hasSession}
             <span class="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">✓ Hecho</span>
+          {:else if st?.isMissed}
+            <span class="text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">
+              {st.missedReason ? MISSED_REASON_ICON[st.missedReason] : '🚫'} No asistí
+            </span>
           {:else if st?.hasDraft}
             <span class="text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">⏸ A medias</span>
           {:else if planExists && !restDay && !isFuture(d)}
@@ -323,10 +353,49 @@
 
       <!-- Registrar / recuperar el entreno de ESTE día -->
       {#if planExists && !restDay && !isFuture(d) && !st?.hasSession}
-        <button class="btn-accent w-full py-2 text-xs mt-2"
-                on:click={() => registerWorkoutFor(d)}>
-          {st?.hasDraft ? `⏸ Continuar (${st.setsLogged} series)` : today ? '▶️ Empezar entreno' : '📝 Registrar este entreno'}
-        </button>
+        {#if st?.isMissed}
+          <!-- Ausencia marcada: se puede recuperar igualmente -->
+          <div class="mt-2 rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2">
+            <p class="text-[11px] text-slate-500 mb-2">
+              Marcado como no asistido{st.missedReason ? ` · ${MISSED_REASON_LABEL[st.missedReason]}` : ''}.
+              Se tendrá en cuenta al calcular tus pesos.
+            </p>
+            <div class="grid grid-cols-2 gap-2">
+              <button class="btn-secondary py-1.5 text-[11px]" on:click={() => registerWorkoutFor(d)}>
+                📝 Recuperarlo
+              </button>
+              <button class="btn-secondary py-1.5 text-[11px]" on:click={() => undoMissed(d)}>
+                ↩️ Deshacer
+              </button>
+            </div>
+          </div>
+        {:else if missedPickerDay && isSameDay(missedPickerDay, d)}
+          <!-- Selector de motivo -->
+          <div class="mt-2 rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2">
+            <p class="text-[11px] font-semibold mb-2">¿Por qué no fuiste?</p>
+            <div class="grid grid-cols-3 gap-1.5">
+              {#each MISSED_REASONS as r}
+                <button class="py-1.5 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-[10px] font-semibold active:scale-95"
+                        on:click={() => confirmMissed(r.id)}>
+                  <div class="text-base leading-none">{r.icon}</div>
+                  <div class="mt-0.5">{r.label}</div>
+                </button>
+              {/each}
+            </div>
+            <button class="text-[10px] text-slate-400 mt-2" on:click={() => missedPickerDay = null}>Cancelar</button>
+          </div>
+        {:else}
+          <button class="btn-accent w-full py-2 text-xs mt-2"
+                  on:click={() => registerWorkoutFor(d)}>
+            {st?.hasDraft ? `⏸ Continuar (${st.setsLogged} series)` : today ? '▶️ Empezar entreno' : '📝 Registrar este entreno'}
+          </button>
+          {#if !st?.hasDraft}
+            <button class="w-full py-1.5 text-[11px] text-slate-400 hover:text-slate-600 mt-1"
+                    on:click={() => openMissedPicker(d)}>
+              🚫 No fui este día
+            </button>
+          {/if}
+        {/if}
       {/if}
 
       <!-- Botones dentro del panel -->

@@ -1,4 +1,4 @@
-import type { PlannedExercise, Exercise, WorkoutSessionExercise, ExperienceLevel, UserPhase } from '$lib/types';
+import type { PlannedExercise, Exercise, WorkoutSessionExercise, ExperienceLevel, UserPhase, MissedReason } from '$lib/types';
 import type { WeightSuggestion, LastSessionSummary } from '$lib/training/weightSuggestion';
 
 /**
@@ -12,12 +12,18 @@ import type { WeightSuggestion, LastSessionSummary } from '$lib/training/weightS
  *  - `experienceLevel`: principiante/intermedio/avanzado.
  *  - `phase`: fase del usuario (recomp/volume/cut), afecta la velocidad
  *    esperada de progresión.
+ *  - `daysSinceLast`: días desde la última vez que se hizo ESE ejercicio.
+ *    Un parón largo exige volver con menos carga (desentrenamiento).
+ *  - `missedReason`: motivo dominante de las ausencias de ese periodo, si el
+ *    usuario las marcó (enfermedad/lesión pesan más que viaje o agenda).
  */
 export interface SuggestionContext {
   consecutiveFailures?: number;
   isDeloadWeek?: boolean;
   experienceLevel?: ExperienceLevel;
   phase?: UserPhase;
+  daysSinceLast?: number;
+  missedReason?: MissedReason | null;
 }
 
 /**

@@ -252,7 +252,19 @@ export interface WorkoutSession {
   notes?: string;
   /** Sensaciones generales 1-5. */
   feeling?: number;
+  /**
+   * Día marcado explícitamente como NO ASISTIDO. El registro existe (para que
+   * el día no quede "pendiente" eternamente) pero no cuenta como entreno:
+   * no suma volumen ni rompe el historial. Se puede deshacer si al final se
+   * recupera la sesión.
+   */
+  missed?: boolean;
+  /** Motivo de la ausencia — la sugerencia de peso lo tiene en cuenta. */
+  missedReason?: MissedReason;
 }
+
+/** Motivos de ausencia a una sesión planificada. */
+export type MissedReason = 'illness' | 'injury' | 'travel' | 'busy' | 'rest';
 
 export interface WorkoutSessionExercise {
   exerciseId: string;
