@@ -47,6 +47,7 @@
 
   // Stats mensuales
   $: sessionsCompleted = statuses.filter(s => s.hasSession).length;
+  $: sessionsMissed = statuses.filter(s => s.isMissed).length;
   $: daysWithMeals = statuses.filter(s => s.mealsLogged > 0).length;
   $: kcalAvg = (() => {
     const withMeals = statuses.filter(s => s.mealsLogged > 0);
@@ -117,16 +118,21 @@
         class:bg-primary-600={today}
         class:text-white={today || (st?.hasSession && !today)}
         class:bg-accent-600={st?.hasSession && !today}
-        class:bg-slate-100={!today && !st?.hasSession && !restDay}
-        class:bg-slate-50={restDay && !today && !st?.hasSession}
-        class:text-slate-400={restDay && !today && !st?.hasSession}
-        class:ring-1={today || (restDay && !today && !st?.hasSession)}
+        class:bg-red-100={st?.isMissed && !today}
+        class:text-red-600={st?.isMissed && !today}
+        class:ring-red-200={st?.isMissed && !today}
+        class:bg-slate-100={!today && !st?.hasSession && !st?.isMissed && !restDay}
+        class:bg-slate-50={restDay && !today && !st?.hasSession && !st?.isMissed}
+        class:text-slate-400={restDay && !today && !st?.hasSession && !st?.isMissed}
+        class:ring-1={today || st?.isMissed || (restDay && !today && !st?.hasSession)}
         class:ring-primary-400={today}
-        class:ring-slate-200={restDay && !today && !st?.hasSession}
+        class:ring-slate-200={restDay && !today && !st?.hasSession && !st?.isMissed}
         on:click={() => goToDayWorkout(d)}>
         <span class="font-bold text-sm leading-none">{d.getDate()}</span>
         {#if st?.hasSession}
           <span class="text-[8px] leading-none mt-0.5">✓</span>
+        {:else if st?.isMissed}
+          <span class="text-[8px] leading-none mt-0.5">🚫</span>
         {:else if restDay}
           <span class="text-[8px] leading-none mt-0.5 opacity-70">·</span>
         {/if}
@@ -137,6 +143,7 @@
   <div class="flex flex-wrap gap-3 mt-3 text-[10px] text-slate-500">
     <span><span class="inline-block w-2 h-2 rounded-sm bg-accent-600"></span> Sesión hecha</span>
     <span><span class="inline-block w-2 h-2 rounded-sm bg-primary-600"></span> Hoy</span>
+    <span><span class="inline-block w-2 h-2 rounded-sm bg-red-100 ring-1 ring-red-200"></span> 🚫 No asistí</span>
     <span><span class="inline-block w-2 h-2 rounded-sm bg-slate-100"></span> Pendiente</span>
     <span><span class="inline-block w-2 h-2 rounded-sm bg-slate-50 ring-1 ring-slate-200"></span> Descanso</span>
   </div>
@@ -147,7 +154,9 @@
   <div class="card">
     <div class="text-2xl mb-1">🏋️</div>
     <div class="font-bold text-xl">{sessionsCompleted}</div>
-    <div class="text-xs text-slate-500">Sesiones del mes</div>
+    <div class="text-xs text-slate-500">
+      Sesiones del mes{#if sessionsMissed > 0}<span class="text-red-500 whitespace-nowrap">{' · '}{sessionsMissed} 🚫</span>{/if}
+    </div>
   </div>
   <div class="card">
     <div class="text-2xl mb-1">🥗</div>

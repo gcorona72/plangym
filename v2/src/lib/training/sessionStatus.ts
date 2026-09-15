@@ -10,8 +10,9 @@ import type { WorkoutSession, MissedReason, ExerciseModality } from '$lib/types'
  *   - NO ASISTIDO → el usuario marca la ausencia: el día deja de estar
  *                   "pendiente" pero NO cuenta como entreno (no suma volumen).
  *
- * Marcar la ausencia no cierra la puerta a recuperarla: si luego se registra
- * el entreno, la marca se retira automáticamente.
+ * Marcar la ausencia CIERRA el día: es una decisión deliberada (dos toques:
+ * "no fui" + motivo), así que el día queda bloqueado y no se ofrece
+ * recuperarlo — quien quiera entrenarlo simplemente no marca la ausencia.
  */
 
 export const MISSED_REASONS: { id: MissedReason; icon: string; label: string }[] = [
@@ -71,14 +72,6 @@ export async function markMissed(
   };
   await db.sessions.put(session);
   return session;
-}
-
-/** Deshace la marca de ausencia (el usuario decide recuperar el entreno). */
-export async function unmarkMissed(dateKey: string, dayId: string): Promise<void> {
-  const existing = await getSessionFor(dateKey, dayId);
-  if (!existing || !existing.missed) return;
-  // Sólo era un marcador de ausencia (sin series) → se elimina el registro
-  await db.sessions.delete(existing.id);
 }
 
 /**

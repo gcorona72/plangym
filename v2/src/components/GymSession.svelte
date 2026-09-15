@@ -30,8 +30,6 @@
   let sessionDate = '';
   /** true si se está registrando un entreno de un día pasado. */
   let isBackfill = false;
-  /** true si ese día estaba marcado como no asistido y se está recuperando. */
-  let wasMissed = false;
 
   onMount(async () => {
     const params = $routeParams;
@@ -112,11 +110,12 @@
       }
       // Si el día estaba marcado como ausencia y ahora se registra el entreno,
       // deja de serlo (recuperar la sesión gana sobre la marca).
-      wasMissed = !!existing.missed;
-      session.missed = false;
-      session.missedReason = undefined;
-      if (wasMissed) {
-        // El marcador se convierte en la sesión real de este plan
+      // Salvaguarda de integridad: si por una carrera de sincronización entre
+      // dispositivos lo que hay es un marcador de ausencia, registrar el
+      // entreno manda — se reutiliza el registro (un día = una sesión).
+      if (existing.missed) {
+        session.missed = false;
+        session.missedReason = undefined;
         session.dayId = day.id;
         session.modality = modality;
         session.startedAt = new Date().toISOString();
@@ -206,20 +205,6 @@
       <h1 class="text-2xl font-bold">{day.name}</h1>
       <p class="text-slate-500 text-sm">{modality === 'gym' ? '🏋️ Versión gym' : '🤸 Versión calistenia'}</p>
     </header>
-
-    {#if wasMissed}
-      <div class="card mb-3 ring-2 ring-slate-300 bg-slate-50">
-        <div class="flex items-start gap-2">
-          <span class="text-2xl">↩️</span>
-          <div class="text-sm">
-            <div class="font-bold text-slate-700">Recuperando un día marcado como no asistido</div>
-            <p class="text-slate-600 mt-0.5 text-xs">
-              Al finalizar, la ausencia se retira y este día contará como entrenado.
-            </p>
-          </div>
-        </div>
-      </div>
-    {/if}
 
     {#if isBackfill}
       <div class="card mb-3 ring-2 ring-amber-300 bg-amber-50">

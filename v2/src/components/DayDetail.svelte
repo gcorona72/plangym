@@ -9,7 +9,7 @@
   import { summarizeDay } from '$lib/training/daySummary';
   import ExpandedExerciseCard from './ExpandedExerciseCard.svelte';
   import { cardioTracker, formatDistance, formatDuration } from '$lib/cardio/cardioTracker';
-  import { markMissed, unmarkMissed, getSessionFor, MISSED_REASONS, MISSED_REASON_LABEL } from '$lib/training/sessionStatus';
+  import { markMissed, getSessionFor, MISSED_REASONS, MISSED_REASON_LABEL } from '$lib/training/sessionStatus';
   import type { MissedReason } from '$lib/types';
   import { getLastCardioSessionOfType } from '$lib/cardio/cardioRepository';
   import type { CardioType, CardioSession } from '$lib/types';
@@ -109,12 +109,6 @@
     pickingMissed = false;
   }
 
-  /** Retira la marca de ausencia → el día vuelve a ser recuperable. */
-  async function clearMissed() {
-    if (!day) return;
-    await unmarkMissed(dateKey, day.id);
-    session = await getSessionFor(dateKey, day.id);
-  }
 
   $: exercises = day
     ? (modality === 'gym' ? day.gymExercises : day.calisthenicsExercises)
@@ -152,6 +146,20 @@
       </div>
     {:else}
       <div class="mb-4"></div>
+    {/if}
+
+    <!-- 🚫 AUSENCIA: día cerrado, sin plan que ejecutar -->
+    {#if isMissed}
+      <div class="card mb-4 bg-red-50 dark:bg-red-950/30 ring-1 ring-red-200 dark:ring-red-900 text-center py-6">
+        <div class="text-4xl mb-2">🚫</div>
+        <p class="font-bold text-red-700 dark:text-red-300">
+          No asistí{session?.missedReason ? ` · ${MISSED_REASON_LABEL[session.missedReason]}` : ''}
+        </p>
+        <p class="text-xs text-red-500/80 dark:text-red-400/80 mt-1 px-4">
+          Este día está cerrado: no cuenta como entreno y se usa para ajustar
+          tus pesos cuando vuelvas.
+        </p>
+      </div>
     {/if}
 
     <!-- 📋 HISTORIAL: día pasado ya completado → solo lectura -->
@@ -333,17 +341,10 @@
           ← Volver al resumen
         </button>
       {:else if isMissed}
-        <!-- Ausencia marcada: sigue pudiendo recuperarse -->
-        <div class="card bg-slate-50 dark:bg-slate-800">
-          <p class="text-xs text-slate-500 mb-3">
-            Este día está marcado como no asistido, así que no cuenta como entreno.
-            La app lo tendrá en cuenta al sugerirte los pesos de la próxima sesión.
-          </p>
-          <div class="grid grid-cols-2 gap-2">
-            <button class="btn-accent py-2 text-xs" on:click={openSession}>📝 Recuperarlo igual</button>
-            <button class="btn-secondary py-2 text-xs" on:click={clearMissed}>↩️ Deshacer ausencia</button>
-          </div>
-        </div>
+        <!-- Día cerrado como ausencia: ni se entrena ni se recupera -->
+        <button class="btn-secondary w-full" on:click={() => navigate('dashboard')}>
+          ← Volver al resumen
+        </button>
       {:else if pickingMissed}
         <div class="card">
           <p class="text-sm font-semibold mb-3">¿Por qué no fuiste?</p>

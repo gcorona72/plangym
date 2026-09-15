@@ -15,7 +15,7 @@
   import WeeklyVolumeCard from './WeeklyVolumeCard.svelte';
   import CompactSchedule from './CompactSchedule.svelte';
   import { profile } from '$stores/profile';
-  import { markMissed, unmarkMissed, MISSED_REASONS, MISSED_REASON_ICON, MISSED_REASON_LABEL } from '$lib/training/sessionStatus';
+  import { markMissed, MISSED_REASONS, MISSED_REASON_LABEL } from '$lib/training/sessionStatus';
   import type { MissedReason } from '$lib/types';
 
   /** Día para el que se está eligiendo motivo de ausencia (null = cerrado). */
@@ -33,14 +33,6 @@
     await loadWeek(weekStart, weekEnd);
   }
 
-  /** Quita la marca de ausencia → el día vuelve a estar recuperable. */
-  async function undoMissed(d: Date) {
-    if (!activeProgram) return;
-    const plan = activeProgram.days[isoDayOfWeek(d)];
-    if (!plan) return;
-    await unmarkMissed(toDateKey(d), plan.id);
-    await loadWeek(weekStart, weekEnd);
-  }
 
   let stagnations: StrengthStagnation[] = [];
   let panelsContainer: HTMLDivElement;
@@ -263,10 +255,12 @@
          use:onMounted={() => i === days.length - 1 && requestAnimationFrame(tryInitialScroll)}
          class="card relative shrink-0 w-[320px] md:w-[360px] snap-start flex flex-col animate-stagger"
          style="animation-delay: {i * 60}ms"
-         class:ring-2={today}
+         class:ring-2={today || statuses[i]?.isMissed}
          class:ring-primary-500={today}
-         class:bg-primary-50={today}
-         class:opacity-60={!today && d < new Date(new Date().toDateString())}>
+         class:bg-primary-50={today && !statuses[i]?.isMissed}
+         class:ring-red-200={statuses[i]?.isMissed}
+         class:bg-red-50={statuses[i]?.isMissed}
+         class:opacity-60={!today && !statuses[i]?.isMissed && d < new Date(new Date().toDateString())}>
       <!-- Header del panel: fecha + estado -->
       <div class="flex items-center justify-between mb-3">
         <div>
@@ -283,8 +277,8 @@
           {#if st?.hasSession}
             <span class="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">✓ Hecho</span>
           {:else if st?.isMissed}
-            <span class="text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">
-              {st.missedReason ? MISSED_REASON_ICON[st.missedReason] : '🚫'} No asistí
+            <span class="text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600 ring-1 ring-red-200 px-2 py-0.5 rounded-full">
+              🚫 No asistí
             </span>
           {:else if st?.hasDraft}
             <span class="text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">⏸ A medias</span>
@@ -354,20 +348,15 @@
       <!-- Registrar / recuperar el entreno de ESTE día -->
       {#if planExists && !restDay && !isFuture(d) && !st?.hasSession}
         {#if st?.isMissed}
-          <!-- Ausencia marcada: se puede recuperar igualmente -->
-          <div class="mt-2 rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2">
-            <p class="text-[11px] text-slate-500 mb-2">
-              Marcado como no asistido{st.missedReason ? ` · ${MISSED_REASON_LABEL[st.missedReason]}` : ''}.
-              Se tendrá en cuenta al calcular tus pesos.
+          <!-- Día cerrado como ausencia: no se entrena ni se recupera -->
+          <div class="mt-2 rounded-lg bg-red-50 dark:bg-red-950/30 ring-1 ring-red-200 dark:ring-red-900 px-3 py-2 text-center">
+            <div class="text-xl leading-none mb-1">🚫</div>
+            <p class="text-[11px] font-semibold text-red-700 dark:text-red-300">
+              No asistí{st.missedReason ? ` · ${MISSED_REASON_LABEL[st.missedReason]}` : ''}
             </p>
-            <div class="grid grid-cols-2 gap-2">
-              <button class="btn-secondary py-1.5 text-[11px]" on:click={() => registerWorkoutFor(d)}>
-                📝 Recuperarlo
-              </button>
-              <button class="btn-secondary py-1.5 text-[11px]" on:click={() => undoMissed(d)}>
-                ↩️ Deshacer
-              </button>
-            </div>
+            <p class="text-[10px] text-red-500/80 dark:text-red-400/80 mt-0.5">
+              Cuenta para ajustar tus pesos al volver
+            </p>
           </div>
         {:else if missedPickerDay && isSameDay(missedPickerDay, d)}
           <!-- Selector de motivo -->
