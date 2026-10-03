@@ -5,6 +5,7 @@
   import { toDateKey } from '$lib/dateUtils';
   import { computeWeeklyAverages, diagnoseProgress, type WeeklyAvg, type ProgressDiagnosis } from '$lib/training/weightProgress';
   import type { WeightLog } from '$lib/types';
+  import { logWeight } from '$lib/weight/weighIns';
 
   let logs: WeightLog[] = [];
   let weeklyAvgs: WeeklyAvg[] = [];
@@ -31,18 +32,8 @@
       return;
     }
     saving = true;
-    const log: WeightLog = {
-      id: `w_${newDate}_${Date.now().toString(36)}`,
-      date: newDate,
-      weightKg: newWeight,
-      createdAt: new Date().toISOString()
-    };
-    await db.weightLogs.put(log);
-
-    // Si es la fecha más reciente, también actualiza el peso del perfil
-    if ($profile && newDate >= (logs[0]?.date ?? '0')) {
-      await saveProfile({ ...$profile, weightKg: newWeight });
-    }
+    // Guarda el pesaje y, si es el más reciente, actualiza el peso del perfil
+    await logWeight(newWeight, newDate);
 
     newWeight = undefined;
     newDate = toDateKey();

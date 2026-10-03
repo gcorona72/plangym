@@ -3,6 +3,7 @@
   import type { WeeklyReport } from '$lib/reports/weeklyReport';
   import { markWeeklyReportSeen } from '$lib/reports/weeklyReport';
   import WeeklyReportView from './WeeklyReportView.svelte';
+  import WeighInPrompt from '../WeighInPrompt.svelte';
 
   /**
    * Informe semanal OBLIGATORIO.
@@ -52,6 +53,10 @@
   <div class="flex-1 overflow-y-auto" bind:this={scroller} on:scroll={checkEnd}>
     <div class="max-w-xl mx-auto px-5 py-4">
       <WeeklyReportView {report} />
+      <!-- El informe semanal es buen momento para registrar el peso -->
+      <div class="mt-5">
+        <WeighInPrompt variant="inline" />
+      </div>
     </div>
   </div>
 

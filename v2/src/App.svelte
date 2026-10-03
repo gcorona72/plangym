@@ -29,6 +29,7 @@
   import Coach from '$components/Coach.svelte';
   import Reports from '$components/Reports.svelte';
   import WeeklyReportModal from '$components/reports/WeeklyReportModal.svelte';
+  import WeighInPrompt from '$components/WeighInPrompt.svelte';
   import { pendingWeeklyReport, type WeeklyReport } from '$lib/reports/weeklyReport';
 
   // ─── Informe semanal obligatorio ──────────────────────────────────────
@@ -133,6 +134,11 @@
 <!-- Modal global de detalle de ejercicio -->
 {#if $activeExercise}
   <ExerciseDetail exercise={$activeExercise} onClose={closeExercise} />
+{/if}
+
+<!-- Aviso de pesaje: sólo en la pantalla principal y con el informe cerrado -->
+{#if showNavs && $currentRoute === 'dashboard' && !weeklyReport}
+  <WeighInPrompt />
 {/if}
 
 <!-- Informe semanal obligatorio (por encima de todo) -->
