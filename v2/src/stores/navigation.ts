@@ -16,7 +16,8 @@ export type Route =
   | 'cardio_live'
   | 'cardio_detail'
   | 'achievements'
-  | 'coach';
+  | 'coach'
+  | 'reports';
 
 export const currentRoute = writable<Route>('dashboard');
 export const routeParams = writable<Record<string, any>>({});

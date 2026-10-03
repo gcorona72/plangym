@@ -11,6 +11,7 @@
     { route: 'shopping',   label: 'Compra',      icon: '🛒' },
     { route: 'cardio',     label: 'Cardio',      icon: '🚴' },
     { route: 'coach',      label: 'Coach IA',    icon: '🧠' },
+    { route: 'reports',    label: 'Informes',    icon: '📋' },
     { route: 'achievements', label: 'Logros',    icon: '🏆' },
     { route: 'weight',     label: 'Peso',        icon: '⚖️' },
     { route: 'sleep',      label: 'Sueño',       icon: '🛌' },

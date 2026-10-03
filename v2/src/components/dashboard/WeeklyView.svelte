@@ -13,6 +13,7 @@
   import { detectAllStagnations, type StrengthStagnation } from '$lib/training/strengthStagnation';
   import ProgressCard from './ProgressCard.svelte';
   import WeeklyVolumeCard from './WeeklyVolumeCard.svelte';
+  import MonthlyGoalsCard from '../reports/MonthlyGoalsCard.svelte';
   import CompactSchedule from './CompactSchedule.svelte';
   import { profile } from '$stores/profile';
   import { markMissed, MISSED_REASONS, MISSED_REASON_LABEL } from '$lib/training/sessionStatus';
@@ -405,6 +406,7 @@
 
 <!-- 📊 MÉTRICAS Y GRÁFICAS (al final, debajo de los paneles) -->
 <div class="mt-6">
+  <MonthlyGoalsCard compact />
   <WeeklyVolumeCard />
   <ProgressCard />
 </div>

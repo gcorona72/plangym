@@ -27,6 +27,30 @@
   import CardioDetail from '$components/CardioDetail.svelte';
   import Achievements from '$components/Achievements.svelte';
   import Coach from '$components/Coach.svelte';
+  import Reports from '$components/Reports.svelte';
+  import WeeklyReportModal from '$components/reports/WeeklyReportModal.svelte';
+  import { pendingWeeklyReport, type WeeklyReport } from '$lib/reports/weeklyReport';
+
+  // ─── Informe semanal obligatorio ──────────────────────────────────────
+  // Al abrir la app (o volver a ella) se comprueba si el informe de la semana
+  // pasada está sin confirmar. Nunca interrumpe un entreno o un cardio en
+  // curso: se espera a que el usuario salga de esas pantallas.
+  let weeklyReport: WeeklyReport | null = null;
+  const NO_INTERRUPT: Route[] = ['onboarding', 'gym_session', 'cardio_live'];
+
+  let checkingReport = false;
+  async function checkWeeklyReport() {
+    if (checkingReport || weeklyReport || !$profile || NO_INTERRUPT.includes($currentRoute)) return;
+    checkingReport = true;
+    try {
+      weeklyReport = await pendingWeeklyReport();
+    } catch {
+      weeklyReport = null; // un fallo aquí nunca debe bloquear la app
+    } finally {
+      checkingReport = false;
+    }
+  }
+  $: if ($profileLoaded && $profile && !NO_INTERRUPT.includes($currentRoute)) checkWeeklyReport();
 
   onMount(async () => {
     const p = await loadProfile();
@@ -39,6 +63,10 @@
     }
     // Cuando IndexedDB cambie → push debounced (si hay cuenta)
     onDataChange(markDirty);
+    // Si la app se queda abierta y cambia la semana, al volver se comprueba
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkWeeklyReport();
+    });
   });
 
   // En cardio_live y coach ocultamos navs: son pantallas inmersivas
@@ -91,6 +119,8 @@
         <Achievements />
       {:else if $currentRoute === 'coach'}
         <Coach />
+      {:else if $currentRoute === 'reports'}
+        <Reports />
       {/if}
     </div>
   {/key}
@@ -103,6 +133,11 @@
 <!-- Modal global de detalle de ejercicio -->
 {#if $activeExercise}
   <ExerciseDetail exercise={$activeExercise} onClose={closeExercise} />
+{/if}
+
+<!-- Informe semanal obligatorio (por encima de todo) -->
+{#if weeklyReport}
+  <WeeklyReportModal report={weeklyReport} on:close={() => (weeklyReport = null)} />
 {/if}
 
 <!-- Modal global de detalle de receta -->

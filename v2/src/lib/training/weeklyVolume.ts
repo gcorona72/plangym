@@ -17,7 +17,7 @@ import { toDateKey, startOfWeek, endOfWeek } from '$lib/dateUtils';
  */
 
 /** Rangos de referencia por músculo (series/semana). */
-const TARGETS: Record<MuscleGroup, { min: number; max: number }> = {
+export const TARGETS: Record<MuscleGroup, { min: number; max: number }> = {
   chest:      { min: 10, max: 20 },
   back:       { min: 10, max: 20 },
   shoulders:  { min: 10, max: 20 },
@@ -66,7 +66,7 @@ export interface WeeklyVolumeReport {
   lagging: MuscleVolume[];
 }
 
-function statusFor(sets: number, min: number, max: number): VolumeStatus {
+export function statusFor(sets: number, min: number, max: number): VolumeStatus {
   if (sets <= 0) return 'none';
   if (sets < min) return 'low';
   if (sets > max) return 'high';

@@ -474,4 +474,33 @@ export interface AppSettings {
   restTimerVibration: boolean;
   weightSuggestionMode: 'progressive' | 'maintain' | 'manual';
   language: 'es' | 'en';
+  /** Objetivos mensuales, por clave 'yyyy-mm'. */
+  monthlyGoals?: Record<string, MonthlyGoals>;
+  /** Lunes (yyyy-mm-dd) de la última semana cuyo informe se ha confirmado. */
+  lastWeeklyReportSeen?: string;
+}
+
+/** Objetivo de fuerza para un ejercicio dentro de un mes. */
+export interface StrengthGoal {
+  exerciseId: string;
+  /** Peso de trabajo al empezar el mes. */
+  startKg: number;
+  /** Peso de trabajo a alcanzar a final de mes. */
+  targetKg: number;
+}
+
+/** Objetivos de entrenamiento de un mes (la comida queda fuera a propósito). */
+export interface MonthlyGoals {
+  /** 'yyyy-mm' */
+  month: string;
+  /** Sesiones a completar en el mes. */
+  sessionsTarget: number;
+  /** % mínimo de series hechas sobre las programadas, semana a semana. */
+  minCompliancePct: number;
+  /** Nº de músculos (de 10) que deben quedar en rango cada semana. */
+  musclesInRangeTarget: number;
+  strength: StrengthGoal[];
+  createdAt: string;
+  /** true si la app los propuso y el usuario no los ha tocado. */
+  auto?: boolean;
 }
