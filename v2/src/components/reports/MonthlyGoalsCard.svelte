@@ -83,16 +83,30 @@
         </label>
       </div>
       {#if draft.bodyweight}
-        <label class="block text-[11px] text-slate-500">
-          Peso corporal · empiezas en {draft.bodyweight.startKg} kg → objetivo (kg)
-          <input type="number" step="0.5" class="input mt-1" bind:value={draft.bodyweight.targetKg} />
-        </label>
+        <div>
+          <div class="text-[11px] font-semibold text-slate-600 mb-1">Peso corporal (kg)</div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="text-[10px] text-slate-500">Empiezo en
+              <input type="number" step="0.1" class="input mt-1" bind:value={draft.bodyweight.startKg} />
+            </label>
+            <label class="text-[10px] text-slate-500">Objetivo
+              <input type="number" step="0.1" class="input mt-1" bind:value={draft.bodyweight.targetKg} />
+            </label>
+          </div>
+        </div>
       {/if}
       {#each draft.strength as g, i}
-        <label class="block text-[11px] text-slate-500">
-          {progress.strength[i]?.name ?? g.exerciseId} · empieza en {g.startKg} kg → objetivo (kg)
-          <input type="number" step="0.5" class="input mt-1" bind:value={g.targetKg} />
-        </label>
+        <div>
+          <div class="text-[11px] font-semibold text-slate-600 mb-1">{progress.strength[i]?.name ?? g.exerciseId} (kg)</div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="text-[10px] text-slate-500">Empiezo en
+              <input type="number" step="0.5" class="input mt-1" bind:value={g.startKg} />
+            </label>
+            <label class="text-[10px] text-slate-500">Objetivo
+              <input type="number" step="0.5" class="input mt-1" bind:value={g.targetKg} />
+            </label>
+          </div>
+        </div>
       {/each}
       <div class="grid grid-cols-2 gap-2">
         <button class="btn-primary py-2 text-xs" on:click={saveEdit}>Guardar</button>
