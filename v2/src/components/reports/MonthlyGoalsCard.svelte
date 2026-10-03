@@ -82,6 +82,12 @@
           <input type="number" min="1" max="10" class="input mt-1" bind:value={draft.musclesInRangeTarget} />
         </label>
       </div>
+      {#if draft.bodyweight}
+        <label class="block text-[11px] text-slate-500">
+          Peso corporal · empiezas en {draft.bodyweight.startKg} kg → objetivo (kg)
+          <input type="number" step="0.5" class="input mt-1" bind:value={draft.bodyweight.targetKg} />
+        </label>
+      {/if}
       {#each draft.strength as g, i}
         <label class="block text-[11px] text-slate-500">
           {progress.strength[i]?.name ?? g.exerciseId} · empieza en {g.startKg} kg → objetivo (kg)
@@ -95,6 +101,29 @@
       <button class="text-[11px] text-slate-400 w-full" on:click={resetToProposal}>↺ Volver a la propuesta de la app</button>
     </div>
   {:else}
+    <!-- Peso corporal -->
+    {#if progress.bodyweight}
+      {@const bw = progress.bodyweight}
+      <div class="mb-3">
+        <div class="flex justify-between text-xs mb-1">
+          <span class="font-semibold">{bw.reached ? '🏅 ' : ''}Peso corporal</span>
+          <span class="font-mono">
+            {bw.currentKg ?? '—'} <span class="text-slate-400">· {bw.startKg} →</span> <b>{bw.targetKg} kg</b>
+          </span>
+        </div>
+        <div class="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+          <div class="h-full transition-all duration-500"
+               class:bg-emerald-500={bw.reached}
+               class:bg-primary-600={!bw.reached}
+               style="width: {Math.max(bw.pct, bw.currentKg == null ? 0 : 3)}%"></div>
+        </div>
+        <p class="text-[10px] text-slate-500 mt-1">{bw.message}</p>
+        {#if bw.weighIns < 2}
+          <button class="text-[11px] text-primary-600 font-semibold mt-1" on:click={() => navigate('weight')}>⚖️ Registrar peso →</button>
+        {/if}
+      </div>
+    {/if}
+
     <!-- Sesiones -->
     <div class="mb-3">
       <div class="flex justify-between text-xs mb-1">

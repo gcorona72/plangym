@@ -500,6 +500,8 @@ export interface MonthlyGoals {
   /** Nº de músculos (de 10) que deben quedar en rango cada semana. */
   musclesInRangeTarget: number;
   strength: StrengthGoal[];
+  /** Peso corporal: de dónde se parte y dónde acabar el mes. */
+  bodyweight?: { startKg: number; targetKg: number };
   createdAt: string;
   /** true si la app los propuso y el usuario no los ha tocado. */
   auto?: boolean;
