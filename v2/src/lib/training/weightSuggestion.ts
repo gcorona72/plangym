@@ -110,7 +110,7 @@ export async function suggestWeight(
   const todayKey = new Date().toISOString().split('T')[0];
   const daysSinceLast = daysBetween(lastSession.date, todayKey);
   const missedReason = daysSinceLast >= 10
-    ? await dominantMissedReason(lastSession.date, todayKey)
+    ? await dominantMissedReason(lastSession.date, todayKey, exerciseId)
     : null;
 
   const ctx: SuggestionContext = {

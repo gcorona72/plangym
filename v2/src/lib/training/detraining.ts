@@ -75,10 +75,9 @@ export function computeDetraining(daysOff: number, reason?: MissedReason | null)
     else if (severity === 'moderate') severity = 'high';
   }
 
+  // Por debajo de 2 semanas, en días: "1 semana" para 12 días se queda corto
   const weeks = Math.floor(daysOff / 7);
-  const periodo = weeks >= 1
-    ? `${weeks} ${weeks === 1 ? 'semana' : 'semanas'}`
-    : `${daysOff} días`;
+  const periodo = weeks >= 2 ? `${weeks} semanas` : `${daysOff} días`;
   const causa = reason ? ` por ${REASON_LABEL[reason]}` : '';
 
   const message = severity === 'restart'

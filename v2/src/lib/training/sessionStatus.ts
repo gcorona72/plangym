@@ -81,10 +81,22 @@ export async function markMissed(
  */
 export async function dominantMissedReason(
   fromKey: string,
-  toKey: string
+  toKey: string,
+  exerciseId?: string
 ): Promise<MissedReason | null> {
   const rows = await db.sessions.where('date').between(fromKey, toKey, false, true).toArray();
-  const missed = rows.filter(s => s.missed && s.missedReason);
+  let missed = rows.filter(s => s.missed && s.missedReason);
+  // Sólo cuentan las ausencias de días que incluían ese ejercicio: faltar a
+  // pierna por falta de tiempo no explica por qué no se hizo press banca.
+  if (exerciseId && missed.length > 0) {
+    const program = await db.programs.filter(p => p.active).first();
+    if (program) {
+      missed = missed.filter(m => {
+        const day = program.days.find(d => d.id === m.dayId);
+        return !!day?.gymExercises.some(e => e.exerciseId === exerciseId);
+      });
+    }
+  }
   if (missed.length === 0) return null;
 
   const counts = new Map<MissedReason, number>();
