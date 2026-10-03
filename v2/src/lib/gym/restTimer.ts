@@ -19,7 +19,11 @@ interface TimerStoreShape {
   totalSeconds: number;
   remainingSeconds: number;
   startedAt: number | null;
+  /** Por qué ese descanso (descanso adaptativo). Vacío si no aplica. */
+  reason: string;
 }
+
+let currentReason = '';
 
 function snapshotFromContext(ctx: TimerContext): TimerStoreShape {
   const snap = ctx.snapshot();
@@ -28,7 +32,8 @@ function snapshotFromContext(ctx: TimerContext): TimerStoreShape {
     paused: snap.state === 'paused',
     totalSeconds: snap.totalSeconds,
     remainingSeconds: snap.remainingSeconds,
-    startedAt: ctx.startedAt
+    startedAt: ctx.startedAt,
+    reason: currentReason
   };
 }
 
@@ -56,7 +61,8 @@ function createRestTimer() {
 
   return {
     subscribe,
-    start(seconds: number) {
+    start(seconds: number, reason = '') {
+      currentReason = reason;
       ctx.start(seconds);
       ensureInterval();
     },

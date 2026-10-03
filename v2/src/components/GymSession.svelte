@@ -3,6 +3,8 @@
   import { db } from '$db/database';
   import { routeParams, navigate } from '$stores/navigation';
   import { restTimer } from '$lib/gym/restTimer';
+  import { computeRest } from '$lib/gym/adaptiveRest';
+  import { buildSetPlan } from '$lib/training/setPlan';
   import { suggestWeight, type WeightSuggestion } from '$lib/training/weightSuggestion';
   import { computeCycleStatus, applyDeloadToPlanned } from '$lib/training/cycle';
   import { profile } from '$stores/profile';
@@ -128,10 +130,6 @@
     return (modality === 'gym' ? day.gymExercises : day.calisthenicsExercises).find(p => p.exerciseId === exerciseId);
   }
 
-  function getSetCount(exerciseId: string): number {
-    return session?.exercises.find(e => e.exerciseId === exerciseId)?.sets.length ?? 0;
-  }
-
   function logSet(exerciseId: string, reps: number, weightKg: number | undefined, rir: number | undefined) {
     if (!session) return;
     const ex = session.exercises.find(e => e.exerciseId === exerciseId);
@@ -147,9 +145,12 @@
     ex.sets.push(newSet);
     session = session; // reactivity
 
-    // Iniciar timer de descanso
+    // Descanso adaptativo: según lo dura que haya sido la serie
     const planned = getPlanned(exerciseId);
-    if (planned) restTimer.start(planned.restSeconds);
+    if (planned) {
+      const rest = computeRest(planned, newSet, newSet.setNumber);
+      restTimer.start(rest.seconds, rest.reason);
+    }
   }
 
   function removeLastSet(exerciseId: string) {
@@ -234,10 +235,11 @@
       </div>
     {/if}
 
-    {#each (modality === 'gym' ? day.gymExercises : day.calisthenicsExercises) as planned (planned.exerciseId)}
+    {#each (modality === 'gym' ? day.gymExercises : day.calisthenicsExercises) as planned, idx (planned.exerciseId)}
       {@const ex = exercisesById.get(planned.exerciseId)}
-      {@const setsDone = getSetCount(planned.exerciseId)}
+      {@const setsDone = session.exercises.find(e => e.exerciseId === planned.exerciseId)?.sets.length ?? 0}
       {@const sug = suggestions.get(planned.exerciseId)}
+      {@const plan = ex && modality === 'gym' ? buildSetPlan(ex, planned, sug?.weightKg ?? null, idx) : null}
       {#if ex}
         <div class="card mb-3">
           <div class="flex items-start gap-3 mb-2">
@@ -305,6 +307,42 @@
                  class:bg-slate-50={sug.status === 'no_history'}
                  class:text-slate-700={sug.status === 'no_history'}>
               {sug.reasoning}
+            </div>
+          {/if}
+
+          <!-- 🗺️ Plan de series: calentamiento → series efectivas → última apurada -->
+          {#if plan && setsDone < planned.sets}
+            <div class="rounded-lg border border-slate-200 px-3 py-2 mb-2 text-xs space-y-1.5">
+              {#if plan.warmups.length > 0 && setsDone === 0}
+                <div class="flex items-start gap-2">
+                  <span class="shrink-0">🔥</span>
+                  <div>
+                    <span class="font-semibold text-slate-700">Calentamiento</span>
+                    <span class="text-slate-400">(no lo registres)</span>
+                    <div class="font-mono text-slate-600 mt-0.5">
+                      {plan.warmups.map(w => `${w.weightKg}kg×${w.reps}`).join(' → ')}
+                    </div>
+                  </div>
+                </div>
+              {/if}
+              {#if plan.workingWeightKg != null}
+                <div class="flex items-start gap-2">
+                  <span class="shrink-0">💪</span>
+                  <div>
+                    <span class="font-semibold text-slate-700">Series efectivas:</span>
+                    <span class="font-mono text-slate-800">{plan.workingSets} × {plan.workingWeightKg}kg</span>
+                    <span class="text-slate-500">· {plan.repsMin}-{plan.repsMax} reps, mismo peso en todas</span>
+                  </div>
+                </div>
+              {/if}
+              <div class="flex items-start gap-2">
+                <span class="shrink-0">🎯</span>
+                <div class="text-slate-600"
+                     class:font-semibold={setsDone === planned.sets - 1}
+                     class:text-orange-700={setsDone === planned.sets - 1}>
+                  {plan.lastSetCue}
+                </div>
+              </div>
             </div>
           {/if}
 

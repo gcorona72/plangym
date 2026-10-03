@@ -12,7 +12,12 @@
       <div class="h-full bg-white/30 transition-all duration-200" style="width: {progress}%"></div>
     </div>
     <div class="px-4 py-3 flex items-center justify-between gap-3 max-w-xl mx-auto">
-      <div class="text-3xl font-bold tabular-nums">{$formattedTime}</div>
+      <div class="min-w-0">
+        <div class="text-3xl font-bold tabular-nums leading-none">{$formattedTime}</div>
+        {#if $restTimer.reason}
+          <div class="text-[10px] text-white/80 mt-1 truncate">{$restTimer.reason}</div>
+        {/if}
+      </div>
       <div class="flex gap-2">
         <button class="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-sm font-semibold active:scale-95" on:click={() => restTimer.addSeconds(-15)}>-15s</button>
         <button class="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-sm font-semibold active:scale-95" on:click={() => restTimer.addSeconds(15)}>+15s</button>

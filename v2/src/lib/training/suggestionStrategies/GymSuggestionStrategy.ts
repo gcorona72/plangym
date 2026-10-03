@@ -10,8 +10,9 @@ import { computeDetraining } from '$lib/training/detraining';
  * Estrategia de DOBLE PROGRESIÓN para ejercicios de gimnasio.
  *
  *   1. El ejercicio tiene un rango de reps (ej: 5-7).
- *   2. Si todas las series alcanzaron el TOP del rango con RIR ≥ 1
- *      → subir peso (incremento según categoría del ejercicio).
+ *   2. Si todas las series alcanzaron el TOP del rango con RIR ≥ 1 (salvo la
+ *      última, que se apura a propósito) → subir peso (incremento según
+ *      categoría del ejercicio).
  *   3. Si se cumplió el mínimo pero no el máximo
  *      → mismo peso, target = +1 rep por serie.
  *   4. Si alguna serie quedó por debajo del mínimo:
@@ -62,7 +63,11 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
     const completedAllSets = done >= planned.sets;
     const setsBelowMin = sets.filter(s => s.reps < planned.repsMin).length;
     const setsAtFailure = RIRs.filter(r => r === 0).length;
-    const allWithMargin = !hasRIR || RIRs.every(r => r >= 1);
+    // La ÚLTIMA serie se apura a propósito (ver setPlan.ts: aislamiento al
+    // fallo, básicos a RIR 1). El margen se exige en las anteriores; si no,
+    // apurar la última como se indica bloquearía subir de peso para siempre.
+    const ordered = [...sets].sort((a, b) => a.setNumber - b.setNumber);
+    const allWithMargin = ordered.slice(0, -1).every(s => s.rir == null || s.rir >= 1);
 
     // 1) VUELTA DE UN PARÓN: manda sobre todo lo demás. Da igual que la última
     //    sesión fuera buena — si han pasado semanas, esa referencia ya no vale.
