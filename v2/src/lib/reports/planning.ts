@@ -2,6 +2,7 @@ import { db } from '$db/database';
 import type { TrainingProgram, TrainingDay, WorkoutSession, Exercise } from '$lib/types';
 import { toDateKey, fromDateKey, dateRange, isoDayOfWeek } from '$lib/dateUtils';
 import { computeVolume } from '$lib/training/weeklyVolume';
+import { workingWeightOf } from '$lib/training/topSet';
 
 /**
  * Helpers compartidos por el informe semanal y los objetivos del mes:
@@ -62,12 +63,15 @@ export function setsLogged(s: WorkoutSession): number {
   return s.exercises.reduce((a, e) => a + (e.skipped ? 0 : e.sets.length), 0);
 }
 
-/** Mayor peso registrado para un ejercicio en una sesión (null si no lo hizo). */
+/**
+ * Peso de trabajo de un ejercicio en una sesión (null si no lo hizo). Una
+ * serie final más pesada (pirámide) no cuenta: se mide el peso con el que se
+ * hicieron las series normales.
+ */
 export function workingWeightIn(s: WorkoutSession, exerciseId: string): number | null {
   const ex = s.exercises.find(e => e.exerciseId === exerciseId && !e.skipped && e.sets.length > 0);
   if (!ex) return null;
-  const w = Math.max(...ex.sets.map(x => x.weightKg ?? 0));
-  return w > 0 ? w : null;
+  return workingWeightOf(ex.sets);
 }
 
 /** Último peso de trabajo de un ejercicio en sesiones ANTERIORES a una fecha. */

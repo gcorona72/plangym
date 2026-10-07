@@ -5,6 +5,8 @@
   import { restTimer } from '$lib/gym/restTimer';
   import { computeRest } from '$lib/gym/adaptiveRest';
   import { buildSetPlan } from '$lib/training/setPlan';
+  import { getLoadSteps, stepsFromSettings, type LoadSteps } from '$lib/training/loadSteps';
+  import { fromDateKey, isoDayOfWeek, addDays } from '$lib/dateUtils';
   import { suggestWeight, type WeightSuggestion } from '$lib/training/weightSuggestion';
   import { computeCycleStatus, applyDeloadToPlanned } from '$lib/training/cycle';
   import { profile } from '$stores/profile';
@@ -32,9 +34,26 @@
   let sessionDate = '';
   /** true si se está registrando un entreno de un día pasado. */
   let isBackfill = false;
+  /**
+   * finishedAt que tenía la sesión al abrirla. Al autoguardar se conserva:
+   * entrar a corregir la sesión de hoy no debe dejarla "a medias" si luego
+   * no se vuelve a pulsar Finalizar.
+   */
+  let originalFinishedAt: string | null = null;
+  /** La sesión ya existe en la BBDD (retomada o autoguardada). */
+  let persisted = false;
+  /** Saltos de peso del gimnasio (Ajustes → Gym). */
+  let loadSteps: LoadSteps = stepsFromSettings(null);
+  /**
+   * Si se empieza HOY un entreno que no es el de hoy y ese mismo entreno quedó
+   * sin hacer un día de la última semana, se ofrece apuntarlo a ese día
+   * (p. ej. el torso del lunes hecho el martes cuenta como el del lunes).
+   */
+  let recoveryCandidate: { date: string; label: string; weekday: string } | null = null;
 
   onMount(async () => {
     const params = $routeParams;
+    loadSteps = await getLoadSteps();
     modality = params.modality === 'calisthenics' ? 'calisthenics' : 'gym';
 
     program = (await db.programs.filter(p => p.active).first()) ?? null;
@@ -51,12 +70,6 @@
     isDeloadWeek = cycle.isDeloadWeek;
     const rawPlanned = modality === 'gym' ? day.gymExercises : day.calisthenicsExercises;
     const planned = isDeloadWeek ? rawPlanned.map(applyDeloadToPlanned) : rawPlanned;
-
-    // Cargar sugerencias de peso en paralelo
-    if (modality === 'gym') {
-      const sugs = await Promise.all(planned.map(p => suggestWeight(p.exerciseId, p)));
-      suggestions = new Map(planned.map((p, i) => [p.exerciseId, sugs[i]]));
-    }
 
     // Mutamos el día en memoria para que getPlanned() devuelva el ajustado
     if (isDeloadWeek) {
@@ -100,6 +113,8 @@
     // Si la sesión retomada no tiene entradas para algún ejercicio del plan
     // (p.ej. el plan cambió), las añadimos vacías.
     if (existing) {
+      persisted = true;
+      originalFinishedAt = existing.missed ? null : existing.finishedAt;
       for (const p of planned) {
         if (!session.exercises.some(e => e.exerciseId === p.exerciseId)) {
           session.exercises.push({ exerciseId: p.exerciseId, sets: [], skipped: false });
@@ -123,11 +138,85 @@
         session.startedAt = new Date().toISOString();
       }
     }
+
+    // Sugerencias de peso. Se calculan ya con la sesión decidida: si se retoma
+    // un entreno autoguardado a medias, no puede ser su propia referencia.
+    if (modality === 'gym') {
+      const excludeSessionId = session.id;
+      const sugs = await Promise.all(planned.map(p => suggestWeight(p.exerciseId, p, undefined, { excludeSessionId })));
+      suggestions = new Map(planned.map((p, i) => [p.exerciseId, sugs[i]]));
+    }
+
+    // ¿Es la recuperación de un día pendiente? Sólo si se empezó sin fecha
+    // (desde Entreno), no es el entreno que toca hoy y aún no hay nada hecho.
+    const todayPlan = program.days[isoDayOfWeek(fromDateKey(today))];
+    const nothingLogged = !session.exercises.some(e => e.sets.length > 0);
+    if (!params.date && todayPlan?.id !== day.id && nothingLogged) {
+      for (let back = 1; back <= 7; back++) {
+        const d = addDays(fromDateKey(today), -back);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        if (program.days[isoDayOfWeek(d)]?.id !== day.id) continue;
+        const onDay = await db.sessions.where('date').equals(key).toArray();
+        // Días ya entrenados o marcados como ausencia están cerrados
+        if (onDay.some(x => x.missed || (x.finishedAt && x.exercises.some(e => e.sets.length > 0)))) break;
+        recoveryCandidate = {
+          date: key,
+          label: d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' }).replace(',', ''),
+          weekday: d.toLocaleDateString('es-ES', { weekday: 'long' })
+        };
+        break;
+      }
+    }
   });
+
+  /** Apunta este entreno al día pendiente en lugar de a hoy. */
+  async function assignToRecoveryDay() {
+    if (!recoveryCandidate || !session || !day) return;
+    const target = recoveryCandidate.date;
+    // Si ese día tenía un borrador vacío o a medias de este mismo plan, se reutiliza su id
+    const onTarget = await db.sessions.where('date').equals(target).toArray();
+    const prev = onTarget.find(x => x.dayId === day!.id && !x.missed);
+    if (persisted && prev && prev.id !== session.id) await db.sessions.delete(session.id);
+    if (prev) {
+      session.id = prev.id;
+      for (const e of prev.exercises) {
+        const mine = session.exercises.find(m => m.exerciseId === e.exerciseId);
+        if (mine && mine.sets.length === 0) mine.sets = e.sets;
+      }
+    }
+    sessionDate = target;
+    session.date = target;
+    isBackfill = true;
+    recoveryCandidate = null;
+    session = session;
+    await autosave();
+  }
 
   function getPlanned(exerciseId: string): PlannedExercise | undefined {
     if (!day) return;
     return (modality === 'gym' ? day.gymExercises : day.calisthenicsExercises).find(p => p.exerciseId === exerciseId);
+  }
+
+  /**
+   * AUTOGUARDADO. Cada serie se guarda en el momento: si el iPhone cierra la
+   * app en segundo plano o la app se actualiza a mitad del entreno, no se
+   * pierde nada y se puede continuar. (Antes todo vivía en memoria hasta
+   * pulsar "Finalizar" y una recarga borraba el entreno entero.)
+   */
+  async function autosave() {
+    if (!session) return;
+    const hasSets = session.exercises.some(e => e.sets.length > 0);
+    if (!hasSets && !persisted) return; // no crear registros vacíos
+    try {
+      await db.sessions.put({
+        ...session,
+        date: sessionDate || session.date,
+        finishedAt: session.finishedAt ?? originalFinishedAt
+      });
+      persisted = true;
+    } catch (e) {
+      console.error('Autoguardado fallido', e);
+    }
   }
 
   function logSet(exerciseId: string, reps: number, weightKg: number | undefined, rir: number | undefined) {
@@ -144,6 +233,7 @@
     };
     ex.sets.push(newSet);
     session = session; // reactivity
+    autosave();
 
     // Descanso adaptativo: según lo dura que haya sido la serie
     const planned = getPlanned(exerciseId);
@@ -159,6 +249,7 @@
     if (!ex || ex.sets.length === 0) return;
     ex.sets.pop();
     session = session;
+    autosave();
   }
 
   async function finishSession() {
@@ -189,8 +280,10 @@
     navigate('dashboard');
   }
 
+  /** Salir sin finalizar: lo registrado ya está guardado y se puede continuar. */
   function cancelSession() {
-    if (confirm('¿Cancelar sesión? Se perderán los datos no guardados.')) {
+    const hasSets = session?.exercises.some(e => e.sets.length > 0);
+    if (!hasSets || confirm('Tus series ya están guardadas. ¿Salir sin finalizar? Podrás continuar luego desde el inicio.')) {
       restTimer.stop();
       navigate('dashboard');
     }
@@ -202,10 +295,29 @@
 <div class="px-5 pt-8 max-w-2xl mx-auto md:max-w-4xl" class:pt-20={$restTimer.running}>
   {#if day && session}
     <header class="mb-4">
-      <button class="text-sm text-slate-500 mb-2" on:click={cancelSession}>← Cancelar</button>
+      <button class="text-sm text-slate-500 mb-2" on:click={cancelSession}>← Salir</button>
       <h1 class="text-2xl font-bold">{day.name}</h1>
       <p class="text-slate-500 text-sm">{modality === 'gym' ? '🏋️ Versión gym' : '🤸 Versión calistenia'}</p>
     </header>
+
+    {#if recoveryCandidate}
+      <div class="card mb-3 ring-2 ring-primary-300 bg-primary-50">
+        <div class="flex items-start gap-2">
+          <span class="text-2xl">🔁</span>
+          <div class="text-sm flex-1">
+            <div class="font-bold text-primary-800">¿Recuperas el entreno del {recoveryCandidate.label}?</div>
+            <p class="text-primary-700 mt-0.5 text-xs">
+              Hoy no toca {day.name}, pero quedó sin hacer el {recoveryCandidate.label}.
+              Si es eso, lo apunto a ese día y dejará de salir como no hecho.
+            </p>
+            <div class="grid grid-cols-2 gap-2 mt-2">
+              <button class="btn-primary py-2 text-xs" on:click={assignToRecoveryDay}>Sí, apúntalo al {recoveryCandidate.weekday}</button>
+              <button class="btn-secondary py-2 text-xs" on:click={() => (recoveryCandidate = null)}>No, es de hoy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    {/if}
 
     {#if isBackfill}
       <div class="card mb-3 ring-2 ring-amber-300 bg-amber-50">
@@ -239,7 +351,8 @@
       {@const ex = exercisesById.get(planned.exerciseId)}
       {@const setsDone = session.exercises.find(e => e.exerciseId === planned.exerciseId)?.sets.length ?? 0}
       {@const sug = suggestions.get(planned.exerciseId)}
-      {@const plan = ex && modality === 'gym' ? buildSetPlan(ex, planned, sug?.weightKg ?? null, idx) : null}
+      {@const plan = ex && modality === 'gym' ? buildSetPlan(ex, planned, sug?.weightKg ?? null, idx, loadSteps) : null}
+      {@const isFinalSet = !!plan && setsDone === planned.sets - 1}
       {#if ex}
         <div class="card mb-3">
           <div class="flex items-start gap-3 mb-2">
@@ -310,7 +423,7 @@
             </div>
           {/if}
 
-          <!-- 🗺️ Plan de series: calentamiento → series efectivas → última apurada -->
+          <!-- 🗺️ Plan de series: calentamiento → series de trabajo → serie final -->
           {#if plan && setsDone < planned.sets}
             <div class="rounded-lg border border-slate-200 px-3 py-2 mb-2 text-xs space-y-1.5">
               {#if plan.warmups.length > 0 && setsDone === 0}
@@ -326,21 +439,25 @@
                 </div>
               {/if}
               {#if plan.workingWeightKg != null}
-                <div class="flex items-start gap-2">
+                <div class="flex items-start gap-2" class:opacity-50={isFinalSet}>
                   <span class="shrink-0">💪</span>
                   <div>
-                    <span class="font-semibold text-slate-700">Series efectivas:</span>
-                    <span class="font-mono text-slate-800">{plan.workingSets} × {plan.workingWeightKg}kg</span>
-                    <span class="text-slate-500">· {plan.repsMin}-{plan.repsMax} reps, mismo peso en todas</span>
+                    <span class="font-semibold text-slate-700">
+                      {plan.workingSets === 1 ? 'Serie 1' : `Series 1-${plan.workingSets}`}:
+                    </span>
+                    <span class="font-mono text-slate-800">{plan.workingWeightKg} kg</span>
+                    <span class="text-slate-500">· {plan.repsMin}-{plan.repsMax} reps</span>
                   </div>
                 </div>
               {/if}
-              <div class="flex items-start gap-2">
+              <div class="flex items-start gap-2 rounded-md -mx-1 px-1 py-0.5"
+                   class:bg-orange-50={isFinalSet}>
                 <span class="shrink-0">🎯</span>
-                <div class="text-slate-600"
-                     class:font-semibold={setsDone === planned.sets - 1}
-                     class:text-orange-700={setsDone === planned.sets - 1}>
-                  {plan.lastSetCue}
+                <div class="text-slate-600" class:text-orange-800={isFinalSet}>
+                  <span class="font-semibold text-slate-700" class:text-orange-800={isFinalSet}>
+                    {plan.finalIsHeavier ? `Serie ${planned.sets} (final):` : 'Última serie:'}
+                  </span>
+                  {plan.finalCue}
                 </div>
               </div>
             </div>
@@ -374,7 +491,8 @@
             <SetInput
               exerciseId={planned.exerciseId}
               planned={planned}
-              suggestedWeight={sug?.weightKg ?? undefined}
+              suggestedWeight={(isFinalSet && plan?.finalIsHeavier ? plan.finalWeightKg : plan?.workingWeightKg ?? sug?.weightKg) ?? undefined}
+              suggestedLabel={isFinalSet && plan?.finalIsHeavier ? '🎯 Serie final' : '💡 Sugerido'}
               lastSessionWeight={sug?.lastSession?.workingWeightKg ?? undefined}
               isCalisthenics={modality === 'calisthenics'}
               on:log={(e) => logSet(planned.exerciseId, e.detail.reps, e.detail.weightKg, e.detail.rir)}
@@ -393,7 +511,7 @@
       💾 Guardar y seguir luego
     </button>
     <p class="text-[10px] text-slate-400 text-center mb-4">
-      "Guardar y seguir luego" conserva las series registradas; el día seguirá <b>pendiente</b> hasta que finalices.
+      Cada serie se guarda al momento. El día seguirá <b>pendiente</b> hasta que finalices.
     </p>
   {:else}
     <p class="text-center text-slate-500 py-12">Cargando…</p>

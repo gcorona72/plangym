@@ -5,31 +5,31 @@ import type { SuggestionStrategy, SuggestionContext } from './SuggestionStrategy
 import { buildLastSummary } from './SuggestionStrategy';
 import { classifyExercise, getCategoryIncrement, categoryLabel } from '$lib/training/exerciseCategory';
 import { computeDetraining } from '$lib/training/detraining';
+import { stepsFromSettings, roundLoad, stepFor } from '$lib/training/loadSteps';
+import { splitTopSet } from '$lib/training/topSet';
 
 /**
  * Estrategia de DOBLE PROGRESIÓN para ejercicios de gimnasio.
  *
- *   1. El ejercicio tiene un rango de reps (ej: 5-7).
- *   2. Si todas las series alcanzaron el TOP del rango con RIR ≥ 1 (salvo la
- *      última, que se apura a propósito) → subir peso (incremento según
- *      categoría del ejercicio).
- *   3. Si se cumplió el mínimo pero no el máximo
- *      → mismo peso, target = +1 rep por serie.
- *   4. Si alguna serie quedó por debajo del mínimo:
- *      - 1ª vez → mismo peso, "casi, intenta otra vez"
- *      - 2ª vez consecutiva → -10% deload del ejercicio + checklist
- *   5. Si RIR=0 en > 50% de las series
- *      → mantener (no es óptimo entrenar al fallo continuo).
- *   6. En semana de deload (6 ó 12 del ciclo)
- *      → mismo peso, mensaje "es semana de descarga, reduce volumen".
- *   7. Tras un PARÓN largo (enfermedad, viaje, ausencias marcadas)
- *      → reducir carga según los días parado: volver con el peso de antes
- *        es fallar series o lesionarse. Manda sobre el resto de reglas.
+ *   1. Tras un PARÓN largo (enfermedad, viaje, ausencias marcadas) → bajar
+ *      carga según los días parado. Manda sobre el resto de reglas.
+ *   2. Semana de descarga (6 ó 12 del ciclo) → mismo peso, menos volumen.
+ *   3. Alguna serie por debajo del mínimo de reps:
+ *      - 1ª vez → mismo peso; 2ª consecutiva → −10%.
+ *   4. SERIE FINAL más pesada (pirámide): si con ese peso hiciste al menos
+ *      mínimo+1 reps → pasa a ser tu peso de trabajo.
+ *   5. Todas las series al TOP del rango con RIR ≥ 1 (salvo la que se apura)
+ *      → subir peso.
+ *   6. Todas las series con 3+ reps en reserva → el peso sobra, subir.
+ *   7. RIR 0 en > 50% de las series → mantener (demasiado fallo).
+ *   8. Si no → mismo peso, +1 rep por serie.
  *
- * El incremento se resuelve así (de mayor a menor prioridad):
- *   1º `planned.incrementKg`     (override en el programa)
- *   2º `exercise.incrementKg`    (default del ejercicio)
- *   3º categoría del ejercicio   (clasificador automático)
+ * Todos los pesos se redondean a lo que se puede CARGAR en el gimnasio
+ * (ver loadSteps.ts): con discos de 2,5 kg la barra sube de 5 en 5.
+ *
+ * El incremento se resuelve así (de mayor a menor prioridad) y luego se
+ * ajusta al salto mínimo del equipo:
+ *   1º `planned.incrementKg` · 2º `exercise.incrementKg` · 3º categoría
  */
 export class GymSuggestionStrategy implements SuggestionStrategy {
   readonly id = 'gym';
@@ -42,9 +42,9 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
     ctx?: SuggestionContext
   ): WeightSuggestion {
     const lastSummary = buildLastSummary(lastEx, lastDate);
-    const workingWeight = lastSummary.workingWeightKg ?? 0;
+    const lastWeight = lastSummary.workingWeightKg ?? 0;
 
-    if (workingWeight <= 0) {
+    if (lastWeight <= 0) {
       return {
         status: 'no_history',
         weightKg: null,
@@ -53,30 +53,45 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
       };
     }
 
-    const sets = lastEx.sets;
-    const done = sets.length;
-    const RIRs = sets.map(s => s.rir).filter((r): r is number => r != null);
-    const hasRIR = RIRs.length > 0;
-    const minRIR = hasRIR ? Math.min(...RIRs) : null;
+    const steps = ctx?.loadSteps ?? stepsFromSettings(null);
+    const step = stepFor(exercise, steps);
+    // Peso de trabajo CARGABLE: si la última vez se apuntó un peso que este
+    // gimnasio no permite (p. ej. 52,5 kg con discos de 2,5), se ajusta.
+    const W = roundLoad(exercise, lastWeight, steps);
+    const adjusted = W !== lastWeight ? ` (${W} kg: lo que permiten tus discos)` : '';
 
-    const allAtTop = done > 0 && sets.every(s => s.reps >= planned.repsMax);
+    /** Sube al menos un salto del equipo, en múltiplos de ese salto. */
+    const raise = (inc: number) => W + Math.max(step, Math.ceil(inc / step - 1e-9) * step);
+    /** Baja según un factor, siempre por debajo de W y cargable. */
+    const lower = (factor: number) => {
+      const w = roundLoad(exercise, W * factor, steps);
+      return w < W ? w : roundLoad(exercise, W - step, steps);
+    };
+
+    // Las series normales se evalúan aparte de una posible serie final más pesada
+    const { straight, top } = splitTopSet(lastEx.sets);
+    const done = lastEx.sets.length;
+    const allRIRs = lastEx.sets.map(s => s.rir).filter((r): r is number => r != null);
+    const straightRIRs = straight.map(s => s.rir).filter((r): r is number => r != null);
+    const minRIR = straightRIRs.length > 0 ? Math.min(...straightRIRs) : null;
+
+    const allAtTop = straight.length > 0 && straight.every(s => s.reps >= planned.repsMax);
     const completedAllSets = done >= planned.sets;
-    const setsBelowMin = sets.filter(s => s.reps < planned.repsMin).length;
-    const setsAtFailure = RIRs.filter(r => r === 0).length;
-    // La ÚLTIMA serie se apura a propósito (ver setPlan.ts: aislamiento al
-    // fallo, básicos a RIR 1). El margen se exige en las anteriores; si no,
-    // apurar la última como se indica bloquearía subir de peso para siempre.
-    const ordered = [...sets].sort((a, b) => a.setNumber - b.setNumber);
-    const allWithMargin = ordered.slice(0, -1).every(s => s.rir == null || s.rir >= 1);
+    const setsBelowMin = straight.filter(s => s.reps < planned.repsMin).length;
+    const setsAtFailure = allRIRs.filter(r => r === 0).length;
+    // La serie que se apura (la final más pesada o, si no hay, la última) no
+    // necesita margen; las demás sí.
+    const marginSets = top ? straight : straight.slice(0, -1);
+    const allWithMargin = marginSets.every(s => s.rir == null || s.rir >= 1);
 
-    // 1) VUELTA DE UN PARÓN: manda sobre todo lo demás. Da igual que la última
-    //    sesión fuera buena — si han pasado semanas, esa referencia ya no vale.
+    // 1) VUELTA DE UN PARÓN: manda sobre todo lo demás.
     const detrain = computeDetraining(ctx?.daysSinceLast ?? 0, ctx?.missedReason);
     if (detrain.reductionPct > 0) {
+      const w = lower(detrain.factor);
       return {
         status: 'suggest_down',
-        weightKg: roundToHalf(workingWeight * detrain.factor),
-        reasoning: detrain.message,
+        weightKg: w,
+        reasoning: `${detrain.message} Con tus discos, lo más cercano es ${w} kg.`,
         lastSession: lastSummary
       };
     }
@@ -85,99 +100,99 @@ export class GymSuggestionStrategy implements SuggestionStrategy {
     if (ctx?.isDeloadWeek) {
       return {
         status: 'maintain',
-        weightKg: workingWeight,
-        reasoning: '🔻 Semana de descarga. Mismo peso, reduce series ~40% y deja 3+ reps en recámara. Recuperación, no PRs.',
+        weightKg: W,
+        reasoning: `🔻 Semana de descarga. Mismo peso${adjusted}, reduce series ~40% y deja 3+ reps en recámara. Recuperación, no PRs.`,
         lastSession: lastSummary
       };
     }
 
-    // 3) No llegó ni al mínimo de reps → el peso te pesa demasiado para el rango.
-    //    (Va ANTES que el chequeo de fallo: fallar a 4 reps con objetivo 5-8 no
-    //    es "entrenaste al fallo", es que la carga es excesiva.)
+    // 3) No llegó ni al mínimo de reps en las series normales → el peso pesa.
     if (setsBelowMin > 0) {
       const fails = ctx?.consecutiveFailures ?? 1;
       if (fails >= 2) {
+        const w = lower(0.9);
         return {
           status: 'suggest_down',
-          weightKg: roundToHalf(workingWeight * 0.9),
-          reasoning: `↓ 2ª sesión sin llegar al mínimo (${planned.repsMin} reps). El peso es demasiado: bajo 10% para consolidar técnica. Revisa sueño y comida.`,
+          weightKg: w,
+          reasoning: `↓ 2ª sesión sin llegar al mínimo (${planned.repsMin} reps). Bajo a ${w} kg para consolidar técnica. Revisa sueño y comida.`,
           lastSession: lastSummary
         };
       }
       return {
         status: 'maintain',
-        weightKg: workingWeight,
-        reasoning: `≈ Te quedaste en ${lastSummary.maxReps} reps (mínimo ${planned.repsMin}). Repite el peso; si vuelve a pasar, lo bajamos.`,
+        weightKg: W,
+        reasoning: `≈ No llegaste a ${planned.repsMin} reps en alguna serie. Repite el peso${adjusted}; si vuelve a pasar, lo bajamos.`,
         lastSession: lastSummary
       };
     }
 
-    // 4) DOBLE PROGRESIÓN: todas las series al tope del rango, con margen (RIR≥1)
-    //    y completaste las series previstas → subir peso.
+    // 4) SERIE FINAL más pesada: si la hiciste holgada, ese es tu nuevo peso.
+    if (top && top.weightKg != null && completedAllSets && top.reps >= planned.repsMin + 1) {
+      const w = Math.max(raise(0), roundLoad(exercise, top.weightKg, steps));
+      return {
+        status: 'suggest_up',
+        weightKg: w,
+        reasoning: `↑ En la serie final hiciste ${top.reps} reps con ${top.weightKg} kg: ${w} kg pasa a ser tu peso de trabajo.`,
+        lastSession: lastSummary
+      };
+    }
+
+    // 5) DOBLE PROGRESIÓN: todas al tope del rango, con margen → subir.
     if (allAtTop && completedAllSets && allWithMargin) {
-      const inc = resolveIncrement(exercise, planned, workingWeight);
+      const w = raise(resolveIncrement(exercise, planned, W));
       return {
         status: 'suggest_up',
-        weightKg: roundToHalf(workingWeight + inc),
-        reasoning: `↑ Tope del rango (${planned.repsMax} reps) en todas las series con reserva. Subo ${inc}kg, vuelves al rango bajo (${planned.repsMin}).`,
+        weightKg: w,
+        reasoning: `↑ Tope del rango (${planned.repsMax} reps) en todas las series. Sube a ${w} kg (+${round2(w - W)}) y vuelve al rango bajo (${planned.repsMin}).`,
         lastSession: lastSummary
       };
     }
 
-    // 5) AUTORREGULACIÓN: aunque no llegaras al tope, si TODAS las series te
-    //    dejaron 3+ reps en reserva, el peso te sobra → subir. Esto evita el
-    //    "siempre mantener" cuando la carga es claramente fácil.
+    // 6) AUTORREGULACIÓN: 3+ reps en reserva en todas las series → sobra peso.
     if (minRIR != null && minRIR >= 3 && completedAllSets) {
-      const inc = resolveIncrement(exercise, planned, workingWeight);
+      const w = raise(resolveIncrement(exercise, planned, W));
       return {
         status: 'suggest_up',
-        weightKg: roundToHalf(workingWeight + inc),
-        reasoning: `↑ Dejaste ${minRIR}+ reps en reserva en todas las series: el peso te sobra. Subo ${inc}kg.`,
+        weightKg: w,
+        reasoning: `↑ Dejaste ${minRIR}+ reps en reserva en todas las series: el peso te sobra. Sube a ${w} kg.`,
         lastSession: lastSummary
       };
     }
 
-    // 6) Fallo (RIR 0) en > 50% de las series estando en rango → no subir,
-    //    entrenar tan al fallo tan a menudo acumula fatiga sin más estímulo.
-    if (hasRIR && setsAtFailure / done > 0.5) {
+    // 7) Fallo (RIR 0) en > 50% de las series → no subir.
+    if (allRIRs.length > 0 && setsAtFailure / done > 0.5) {
       return {
         status: 'cns_fatigue',
-        weightKg: workingWeight,
-        reasoning: `⚠️ Llegaste al fallo en ${setsAtFailure}/${done} series. Mismo peso — deja 1-2 reps en reserva la próxima para progresar mejor.`,
+        weightKg: W,
+        reasoning: `⚠️ Llegaste al fallo en ${setsAtFailure}/${done} series. Mismo peso${adjusted} — deja 1-2 reps en reserva salvo en la serie final.`,
         lastSession: lastSummary
       };
     }
 
-    // 7) En rango, esfuerzo adecuado, pero sin llegar al tope → mismo peso,
-    //    suma 1 rep por serie hasta cerrar el rango (así luego toca subir).
+    // 8) En rango sin llegar al tope → mismo peso, +1 rep por serie.
     return {
       status: 'maintain',
-      weightKg: workingWeight,
-      reasoning: `= Buen esfuerzo. Mismo peso: intenta +1 rep por serie hasta llegar a ${planned.repsMax} en todas, y ahí subimos.`,
+      weightKg: W,
+      reasoning: `= Mismo peso${adjusted}: intenta +1 rep por serie hasta llegar a ${planned.repsMax} en todas, y ahí subimos.`,
       lastSession: lastSummary
     };
   }
 }
 
-/** Redondea al múltiplo de 0.5 más cercano (carga típica de pesas). */
-function roundToHalf(value: number): number {
-  return Math.round(value * 2) / 2;
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 /**
- * Resuelve el incremento (kg) que se sumará en la próxima sesión.
- * Orden de prioridad: override del programa > default del ejercicio > categoría.
- *
- * La heurística por categoría reemplaza a la antigua "por peso bruto", para
- * respetar la tabla de incrementos del proyecto (sentadilla +5, lateral +1...).
+ * Incremento base (kg) según programa, ejercicio o categoría. Después se
+ * ajusta al salto mínimo del equipo del gimnasio (ver `raise`).
  */
 function resolveIncrement(exercise: Exercise, planned: PlannedExercise, currentWeight: number): number {
   if (planned.incrementKg != null) return planned.incrementKg;
   if (exercise.incrementKg != null) return exercise.incrementKg;
   const category = classifyExercise(exercise);
   const base = getCategoryIncrement(category);
-  // Para compuesto tren inferior arrancamos con +5 kg y bajamos a +2.5 cuando
-  // el peso ya es serio (>1.2× peso corporal aprox → usamos 80 kg como umbral).
+  // Compuesto tren inferior: +5 kg al principio, +2,5 cuando el peso ya es serio
   if (category === 'compound_lower' && currentWeight >= 80) return 2.5;
   return base;
 }
@@ -195,12 +210,13 @@ export interface ConsecutiveFailures {
  */
 export async function detectConsecutiveFailures(
   exerciseId: string,
-  planned: PlannedExercise
+  planned: PlannedExercise,
+  excludeSessionId?: string
 ): Promise<ConsecutiveFailures> {
   const sessions = await db.sessions
     .orderBy('date')
     .reverse()
-    .filter(s => s.exercises.some(e => e.exerciseId === exerciseId && !e.skipped && e.sets.length > 0))
+    .filter(s => s.id !== excludeSessionId && s.exercises.some(e => e.exerciseId === exerciseId && !e.skipped && e.sets.length > 0))
     .limit(3)
     .toArray();
 
@@ -208,7 +224,8 @@ export async function detectConsecutiveFailures(
   for (const session of sessions) {
     const ex = session.exercises.find(e => e.exerciseId === exerciseId);
     if (!ex) break;
-    const minRepsHit = ex.sets.every(s => s.reps >= planned.repsMin);
+    // La serie final más pesada puede quedarse corta a propósito: no cuenta
+    const minRepsHit = splitTopSet(ex.sets).straight.every(s => s.reps >= planned.repsMin);
     if (!minRepsHit) count++;
     else break;
   }

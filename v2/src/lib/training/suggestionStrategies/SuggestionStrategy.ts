@@ -1,5 +1,7 @@
 import type { PlannedExercise, Exercise, WorkoutSessionExercise, ExperienceLevel, UserPhase, MissedReason } from '$lib/types';
 import type { WeightSuggestion, LastSessionSummary } from '$lib/training/weightSuggestion';
+import type { LoadSteps } from '$lib/training/loadSteps';
+import { workingWeightOf } from '$lib/training/topSet';
 
 /**
  * Contexto opcional que el flujo principal (`suggestWeight`) calcula antes
@@ -16,6 +18,7 @@ import type { WeightSuggestion, LastSessionSummary } from '$lib/training/weightS
  *    Un parón largo exige volver con menos carga (desentrenamiento).
  *  - `missedReason`: motivo dominante de las ausencias de ese periodo, si el
  *    usuario las marcó (enfermedad/lesión pesan más que viaje o agenda).
+ *  - `loadSteps`: saltos de peso del gimnasio (disco más pequeño, etc.).
  */
 export interface SuggestionContext {
   consecutiveFailures?: number;
@@ -24,6 +27,8 @@ export interface SuggestionContext {
   phase?: UserPhase;
   daysSinceLast?: number;
   missedReason?: MissedReason | null;
+  /** Saltos de peso reales del gimnasio, para sugerir pesos cargables. */
+  loadSteps?: LoadSteps;
 }
 
 /**
@@ -55,8 +60,9 @@ export function buildLastSummary(
   lastDate: string
 ): LastSessionSummary {
   const sets = lastExercise.sets;
-  const weights = sets.map(s => s.weightKg ?? 0);
-  const workingWeight = weights.length > 0 ? Math.max(...weights) : 0;
+  // Peso de trabajo = el de las series normales; una última serie más pesada
+  // (serie final de la pirámide) no cuenta como peso de trabajo.
+  const workingWeight = workingWeightOf(sets) ?? 0;
   const maxReps = sets.length > 0 ? Math.max(...sets.map(s => s.reps)) : 0;
   const RIRs = sets.map(s => s.rir).filter((r): r is number => r != null);
   const minRIR = RIRs.length > 0 ? Math.min(...RIRs) : 0;

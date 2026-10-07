@@ -1,25 +1,21 @@
 import type { Exercise, PlannedExercise } from '$lib/types';
 import { classifyExercise, type ExerciseCategory } from './exerciseCategory';
+import { roundLoad, stepFor, stepsFromSettings, type LoadSteps } from './loadSteps';
 
 /**
- * PLAN DE SERIES de un ejercicio: de qué peso partir y cómo terminar.
- *
- * La sobrecarga progresiva se produce ENTRE sesiones (más peso o más reps que
- * la vez anterior), no subiendo de peso dentro de la misma sesión. Dentro de
- * una sesión el esquema es:
+ * PLAN DE SERIES de un ejercicio: con qué peso empezar y con cuál terminar.
  *
  *   1. Calentamiento en rampa (NO se registra): series ligeras subiendo hasta
- *      el peso de trabajo. Prepara articulaciones y sistema nervioso sin
- *      generar fatiga.
- *   2. Series efectivas: TODAS con el mismo peso (el sugerido).
- *   3. La última serie es la que se apura: en aislamiento hasta el fallo
- *      (seguro y suma estímulo); en básicos con barra hasta RIR 1, porque el
- *      fallo real con carga pesada cuesta mucha fatiga y compromete la técnica.
+ *      el peso de trabajo.
+ *   2. Series de trabajo: todas con el peso sugerido, dentro del rango de reps.
+ *   3. Serie FINAL: un salto de peso más (pirámide ascendente corta), a todas
+ *      las reps que se puedan con buena técnica. Si con ese peso se hacen al
+ *      menos mínimo+1 reps, pasa a ser el peso de trabajo de la próxima vez.
  *
- * Por qué no "empezar con 50 y acabar con 60 al fallo": esas series ligeras
- * del principio serían calentamiento contado como trabajo, y la final al
- * fallo con +20% acumula fatiga desproporcionada. Mismo peso en todas + la
- * última apurada da más volumen efectivo con menos riesgo.
+ * La serie final sólo es más pesada si el salto es razonable (≤12% del peso):
+ * en mancuernas pequeñas, pasar de 10 a 12 kg es un +20% y rompe la técnica,
+ * así que ahí la última serie se hace con el mismo peso, hasta el fallo.
+ * Todos los pesos se redondean a lo que se puede cargar (ver loadSteps.ts).
  */
 
 export interface WarmupSet {
@@ -30,18 +26,26 @@ export interface WarmupSet {
 export interface SetPlan {
   /** Rampa de calentamiento — orientativa, no se registra. */
   warmups: WarmupSet[];
-  /** Peso de TODAS las series efectivas (null si no hay referencia aún). */
+  /** Peso de las series de trabajo (null si aún no hay referencia). */
   workingWeightKg: number | null;
+  /** Nº de series de trabajo (sin contar la final si es más pesada). */
   workingSets: number;
   repsMin: number;
   repsMax: number;
-  /** RIR objetivo de la última serie. */
-  lastSetRIR: number;
-  /** Indicación de cómo apurar la última serie. */
-  lastSetCue: string;
+  /** Peso de la serie final (null si aún no hay referencia). */
+  finalWeightKg: number | null;
+  /** La serie final lleva más peso que las de trabajo. */
+  finalIsHeavier: boolean;
+  /** Reps a superar en la serie final para subir el peso de trabajo. */
+  finalTargetReps: number;
+  /** Indicación para la serie final. */
+  finalCue: string;
 }
 
 type Step = [pct: number, reps: number];
+
+/** Salto máximo (relativo) para que la serie final lleve más peso. */
+const MAX_FINAL_JUMP = 0.12;
 
 function isCompound(c: ExerciseCategory): boolean {
   return c === 'compound_lower' || c === 'compound_upper';
@@ -55,42 +59,47 @@ function rampFor(category: ExerciseCategory, weight: number, isFirst: boolean): 
       if (weight >= 30) return [[0.5, 10], [0.75, 5]];
       return [[0.5, 10]];
     }
-    // Ya hay calor general: rampa corta
     if (weight >= 60) return [[0.6, 6], [0.8, 3]];
     return [[0.6, 6]];
   }
-  // Máquinas/mancuernas con carga seria (prensa, press inclinado…)
   if (weight >= 40 && category !== 'isolation_small_db') return [[0.6, 8]];
   return [];
-}
-
-function roundFor(category: ExerciseCategory, ex: Exercise, kg: number): number {
-  const barbell = (ex.requiredEquipment ?? []).includes('barbell');
-  if (barbell) return Math.max(20, Math.round(kg / 2.5) * 2.5); // la barra pesa 20
-  if (category === 'isolation_small_db' || category === 'accessory_unilateral') return Math.max(1, Math.round(kg));
-  return Math.max(2.5, Math.round(kg / 2.5) * 2.5);
 }
 
 export function buildSetPlan(
   ex: Exercise,
   planned: PlannedExercise,
   workingWeightKg: number | null,
-  exerciseIndex: number
+  exerciseIndex: number,
+  steps: LoadSteps = stepsFromSettings(null)
 ): SetPlan {
   const category = classifyExercise(ex);
   const compound = isCompound(category);
+  const W = workingWeightKg != null && workingWeightKg > 0 ? roundLoad(ex, workingWeightKg, steps) : null;
+  const step = stepFor(ex, steps);
+  const finalIsHeavier = W != null && planned.sets >= 2 && step / W <= MAX_FINAL_JUMP;
+  const finalWeightKg = W == null ? null : finalIsHeavier ? roundLoad(ex, W + step, steps) : W;
+  const finalTargetReps = planned.repsMin + 1;
 
-  const lastSetRIR = compound ? 1 : 0;
-  const lastSetCue = compound
-    ? 'Última serie: apúrala hasta RIR 1 (1 rep en recámara). Con barra pesada el fallo real cuesta mucha fatiga y técnica.'
-    : 'Última serie: llévala al fallo (RIR 0). En este ejercicio es seguro y es el estímulo extra.';
+  let finalCue: string;
+  if (W == null) {
+    finalCue = 'Última serie: la más exigente, hasta casi el fallo.';
+  } else if (finalIsHeavier) {
+    finalCue = `${finalWeightKg} kg, todas las reps que puedas con buena técnica` +
+      (compound ? ' (con barras de seguridad o alguien que te ayude)' : '') +
+      `. Si haces ${finalTargetReps} o más, la próxima vez trabajas con ${finalWeightKg} kg.`;
+  } else {
+    finalCue = compound
+      ? `${W} kg dejando 1 rep en la recámara.`
+      : `${W} kg hasta el fallo: hasta que no puedas hacer ni una más.`;
+  }
 
   const warmups: WarmupSet[] = [];
-  if (workingWeightKg != null && workingWeightKg > 0) {
+  if (W != null) {
     const seen = new Set<number>();
-    for (const [pct, reps] of rampFor(category, workingWeightKg, exerciseIndex === 0)) {
-      const w = roundFor(category, ex, workingWeightKg * pct);
-      if (w >= workingWeightKg || seen.has(w)) continue;
+    for (const [pct, reps] of rampFor(category, W, exerciseIndex === 0)) {
+      const w = roundLoad(ex, W * pct, steps);
+      if (w >= W || seen.has(w)) continue;
       seen.add(w);
       warmups.push({ weightKg: w, reps });
     }
@@ -98,11 +107,13 @@ export function buildSetPlan(
 
   return {
     warmups,
-    workingWeightKg,
-    workingSets: planned.sets,
+    workingWeightKg: W,
+    workingSets: finalIsHeavier ? planned.sets - 1 : planned.sets,
     repsMin: planned.repsMin,
     repsMax: planned.repsMax,
-    lastSetRIR,
-    lastSetCue
+    finalWeightKg,
+    finalIsHeavier,
+    finalTargetReps,
+    finalCue
   };
 }

@@ -9,6 +9,8 @@
   /** Peso de la última sesión (para botón rápido "Anterior"). */
   export let lastSessionWeight: number | undefined = undefined;
   export let isCalisthenics: boolean = false;
+  /** Texto del botón de sugerencia (p. ej. "Serie final" en la última). */
+  export let suggestedLabel: string = '💡 Sugerido';
 
   const dispatch = createEventDispatcher<{
     log: { reps: number; weightKg: number | undefined; rir: number | undefined };
@@ -18,6 +20,14 @@
   /** Inicializamos con la sugerencia, pero el usuario puede cambiarla libremente. */
   let weight: number | undefined = suggestedWeight ?? lastSessionWeight;
   let rir: number | undefined = planned.targetRIR;
+
+  // Si la sugerencia cambia (p. ej. toca la serie final, más pesada), el campo
+  // de peso la adopta; el usuario sigue pudiendo cambiarla.
+  let prevSuggested = suggestedWeight;
+  $: if (suggestedWeight !== prevSuggested) {
+    prevSuggested = suggestedWeight;
+    if (suggestedWeight != null) weight = suggestedWeight;
+  }
 
   /** ¿El peso actual coincide con la sugerencia? (para destacar el botón). */
   $: matchesSuggested = suggestedWeight != null && weight === suggestedWeight;
@@ -57,7 +67,7 @@
           class:border-slate-200={!matchesSuggested}
           class:text-slate-700={!matchesSuggested}
           on:click={applySuggested}>
-          💡 Sugerido · {suggestedWeight}kg
+          {suggestedLabel} · {suggestedWeight}kg
         </button>
       {/if}
       {#if lastSessionWeight != null && lastSessionWeight !== suggestedWeight}

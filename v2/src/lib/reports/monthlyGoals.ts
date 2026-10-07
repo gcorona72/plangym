@@ -2,6 +2,7 @@ import { db } from '$db/database';
 import type { AppSettings, MonthlyGoals, StrengthGoal, ExperienceLevel, Exercise } from '$lib/types';
 import { toDateKey, startOfMonth, endOfMonth, fromDateKey, startOfWeek, addDays } from '$lib/dateUtils';
 import { classifyExercise } from '$lib/training/exerciseCategory';
+import { getLoadSteps, roundLoad, stepFor } from '$lib/training/loadSteps';
 import { TRACKED_MUSCLES, TARGETS, statusFor } from '$lib/training/weeklyVolume';
 import {
   getActiveProgram, getExercisesById, plannedDaysBetween, plannedVolume,
@@ -62,10 +63,7 @@ function monthlyIncrement(category: ReturnType<typeof classifyExercise>, level: 
   }
 }
 
-function roundKg(ex: Exercise, kg: number): number {
-  const barbell = (ex.requiredEquipment ?? []).includes('barbell');
-  return barbell ? Math.round(kg / 2.5) * 2.5 : Math.round(kg * 2) / 2;
-}
+
 
 /** Músculos que quedarían en rango cumpliendo una semana completa del programa. */
 export async function programMusclesInRange(): Promise<number> {
@@ -84,8 +82,8 @@ export async function programMusclesInRange(): Promise<number> {
 export async function proposeGoals(month: string): Promise<MonthlyGoals | null> {
   const program = await getActiveProgram();
   if (!program) return null;
-  const [byId, profile, sessions] = await Promise.all([
-    getExercisesById(), db.profile.get(1), db.sessions.toArray()
+  const [byId, profile, sessions, steps] = await Promise.all([
+    getExercisesById(), db.profile.get(1), db.sessions.toArray(), getLoadSteps()
   ]);
 
   const first = fromDateKey(`${month}-01`);
@@ -114,7 +112,10 @@ export async function proposeGoals(month: string): Promise<MonthlyGoals | null> 
     const last = latestWorkingWeight(sessions, id, monthStartKey) ?? latestWorkingWeight(sessions, id);
     if (!last) continue;
     const inc = monthlyIncrement(classifyExercise(ex), profile?.experienceLevel);
-    strength.push({ exerciseId: id, startKg: last.kg, targetKg: roundKg(ex, last.kg + inc) });
+    // Pesos cargables con el equipo del gimnasio (p. ej. barra de 5 en 5)
+    const start = roundLoad(ex, last.kg, steps);
+    const target = Math.max(roundLoad(ex, start + inc, steps), start + stepFor(ex, steps));
+    strength.push({ exerciseId: id, startKg: start, targetKg: target });
   }
 
   const bwStart = await latestBodyweight(monthStartKey);

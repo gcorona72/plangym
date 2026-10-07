@@ -6,6 +6,7 @@ import { detectConsecutiveFailures } from './suggestionStrategies/GymSuggestionS
 import { computeCycleStatus } from './cycle';
 import { daysBetween } from './detraining';
 import { dominantMissedReason } from './sessionStatus';
+import { getLoadSteps } from './loadSteps';
 
 /**
  * Sobrecarga progresiva para ectomorfos.
@@ -79,7 +80,9 @@ const NO_HISTORY: WeightSuggestion = {
 export async function suggestWeight(
   exerciseId: string,
   planned: PlannedExercise,
-  exercise?: Exercise
+  exercise?: Exercise,
+  /** Sesión en curso: no puede ser su propia referencia (se autoguarda a medias). */
+  opts: { excludeSessionId?: string } = {}
 ): Promise<WeightSuggestion> {
   const ex = exercise ?? (await db.exercises.get(exerciseId)) ?? undefined;
   if (!ex) return NO_HISTORY;
@@ -88,7 +91,7 @@ export async function suggestWeight(
   const sessions = await db.sessions
     .orderBy('date')
     .reverse()
-    .filter(s => !s.missed && s.exercises.some(e => e.exerciseId === exerciseId && !e.skipped && e.sets.length > 0))
+    .filter(s => !s.missed && s.id !== opts.excludeSessionId && s.exercises.some(e => e.exerciseId === exerciseId && !e.skipped && e.sets.length > 0))
     .limit(1)
     .toArray();
 
@@ -100,7 +103,7 @@ export async function suggestWeight(
 
   // Construir contexto: failures consecutivos + estado del ciclo + perfil
   const [failures, profile] = await Promise.all([
-    ex.modality === 'gym' ? detectConsecutiveFailures(exerciseId, planned) : Promise.resolve({ count: 0, message: '' }),
+    ex.modality === 'gym' ? detectConsecutiveFailures(exerciseId, planned, opts.excludeSessionId) : Promise.resolve({ count: 0, message: '' }),
     db.profile.get(1)
   ]);
   const cycle = computeCycleStatus(profile?.cycleStartDate);
@@ -119,7 +122,8 @@ export async function suggestWeight(
     experienceLevel: profile?.experienceLevel,
     phase: profile?.userPhase,
     daysSinceLast,
-    missedReason
+    missedReason,
+    loadSteps: await getLoadSteps()
   };
 
   const strategy = getSuggestionStrategy(ex.modality);

@@ -7,6 +7,7 @@
   import { navigate } from '$stores/navigation';
   import { onMount } from 'svelte';
   import { db } from '$db/database';
+  import { getLoadSteps, stepsFromSettings, type LoadSteps } from '$lib/training/loadSteps';
   import { auth, login, register, logout } from '$stores/auth';
   import { theme, setTheme, type ThemeMode } from '$stores/theme';
 
@@ -22,10 +23,20 @@
   let activeProgramId: string = '';
   let generating = false;
 
+  // ─── Saltos de peso del gimnasio ───────────────────────────────────
+  let loadSteps: LoadSteps = stepsFromSettings(null);
+  let loadStepsSaved = false;
+  async function saveLoadSteps() {
+    await db.settings.update(1, { loadSteps: { ...loadSteps } });
+    loadStepsSaved = true;
+    setTimeout(() => (loadStepsSaved = false), 2000);
+  }
+
   onMount(async () => {
     allPrograms = await db.programs.toArray();
     const active = allPrograms.find(p => p.active);
     activeProgramId = active?.id ?? '';
+    loadSteps = await getLoadSteps();
   });
 
   async function regenerateProgram() {
@@ -852,6 +863,42 @@
       </div>
     {/each}
     <button class="btn-primary w-full mt-6" on:click={savePerfil}>Guardar equipamiento</button>
+
+    <!-- Saltos de peso reales: las sugerencias se redondean a pesos cargables -->
+    <div class="card mt-6">
+      <h3 class="section-title mb-1">⚖️ Saltos de peso de tu gimnasio</h3>
+      <p class="text-xs text-slate-500 mb-3">
+        Para que la app solo te sugiera pesos que puedes cargar de verdad.
+      </p>
+      <div class="space-y-3">
+        <label class="block">
+          <span class="label">Disco más pequeño (barra, prensa, Smith)</span>
+          <select class="input" bind:value={loadSteps.barbellPlateKg}>
+            <option value={1.25}>1,25 kg — la barra sube de 2,5 en 2,5</option>
+            <option value={2.5}>2,5 kg — la barra sube de 5 en 5</option>
+            <option value={5}>5 kg — la barra sube de 10 en 10</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="label">Mancuernas</span>
+          <select class="input" bind:value={loadSteps.dumbbellStepKg}>
+            <option value={1}>De 1 en 1 kg</option>
+            <option value={2}>De 2 en 2 kg</option>
+            <option value={2.5}>De 2,5 en 2,5 kg</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="label">Máquinas y poleas (placas)</span>
+          <select class="input" bind:value={loadSteps.machineStepKg}>
+            <option value={2.5}>De 2,5 en 2,5 kg</option>
+            <option value={5}>De 5 en 5 kg</option>
+          </select>
+        </label>
+      </div>
+      <button class="btn-secondary w-full mt-4" on:click={saveLoadSteps}>
+        {loadStepsSaved ? '✓ Guardado' : 'Guardar saltos de peso'}
+      </button>
+    </div>
   {/if}
 
   {#if activeTab === 'sync'}

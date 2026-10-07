@@ -478,6 +478,8 @@ export interface AppSettings {
   monthlyGoals?: Record<string, MonthlyGoals>;
   /** Lunes (yyyy-mm-dd) de la última semana cuyo informe se ha confirmado. */
   lastWeeklyReportSeen?: string;
+  /** Saltos de peso reales del gimnasio (disco más pequeño, mancuernas, máquinas). */
+  loadSteps?: { barbellPlateKg: number; dumbbellStepKg: number; machineStepKg: number };
 }
 
 /** Objetivo de fuerza para un ejercicio dentro de un mes. */
